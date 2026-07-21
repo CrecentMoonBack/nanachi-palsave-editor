@@ -1,0 +1,15 @@
+build/bin
+node_modules
+frontend/dist
+
+# Real save files are test fixtures only. They contain other players'
+# Steam IDs and character data — never commit them.
+testdata/*.sav
+testdata/*.gvas
+testdata/Players/
+
+# Oodle: oo2core is Epic-owned and must never be redistributed.
+# ooz may be bundled only if its license permits (verify before adding).
+third_party/oodle/oo2core*.dll
+
+*.exe
