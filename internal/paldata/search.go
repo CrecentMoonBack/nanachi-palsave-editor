@@ -57,6 +57,30 @@ func SearchPals(q string) []*Pal {
 	return out
 }
 
+// Passives returns every passive a pal can carry, best tier first.
+// The slice is shared; callers must not mutate it.
+func Passives() []*Passive {
+	load()
+	return passiveList
+}
+
+// SearchPassives returns the passives whose id, Korean name or English name
+// contains q, case-insensitively. An empty query returns everything.
+func SearchPassives(q string) []*Passive {
+	load()
+	q = strings.ToLower(strings.TrimSpace(q))
+	if q == "" {
+		return passiveList
+	}
+	out := make([]*Passive, 0, 16)
+	for _, p := range passiveList {
+		if matches(q, p.ID, p.NameKO, p.NameEN) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func matches(lowerQuery string, fields ...string) bool {
 	for _, f := range fields {
 		if f != "" && strings.Contains(strings.ToLower(f), lowerQuery) {
@@ -74,6 +98,26 @@ func sortItems(s []*Item) {
 			return s[i].SortID < s[j].SortID
 		}
 		return s[i].ID < s[j].ID
+	})
+}
+
+// sortPassives orders by tier, best first, so browsing the picker starts at
+// the traits anyone actually wants. Detrimental traits (negative rank) sort
+// last, below the untiered ones. Ties break on the Korean name, which is what
+// the list is labelled with, then on id so the order is stable across runs.
+func sortPassives(s []*Passive) {
+	sort.Slice(s, func(i, j int) bool {
+		a, b := s[i], s[j]
+		if (a.Rank < 0) != (b.Rank < 0) {
+			return b.Rank < 0
+		}
+		if a.Rank != b.Rank {
+			return a.Rank > b.Rank
+		}
+		if a.NameKO != b.NameKO {
+			return a.NameKO < b.NameKO
+		}
+		return a.ID < b.ID
 	})
 }
 
