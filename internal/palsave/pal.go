@@ -251,6 +251,52 @@ const (
 	RankHP         = "Rank_HP"
 )
 
+// ContainerID reports which character container holds this pal — the player's
+// palbox, their active party, or a base camp's worker slots. Compare it with
+// PlayerSave.PalStorageContainer and PartyContainer to tell which.
+//
+// A pal that is out in the world rather than stored has no SlotId, so ok is
+// false; that is a normal state, not a broken record.
+func (p *Pal) ContainerID() (gvas.GUID, bool) {
+	v, ok := p.params.Get("SlotId")
+	if !ok {
+		return gvas.GUID{}, false
+	}
+	sp, ok := v.(*gvas.StructProperty)
+	if !ok {
+		return gvas.GUID{}, false
+	}
+	inner, ok := sp.Value.(*gvas.StructProperties)
+	if !ok {
+		return gvas.GUID{}, false
+	}
+	cv, ok := inner.Props.Get("ContainerId")
+	if !ok {
+		return gvas.GUID{}, false
+	}
+	csp, ok := cv.(*gvas.StructProperty)
+	if !ok {
+		return gvas.GUID{}, false
+	}
+	cinner, ok := csp.Value.(*gvas.StructProperties)
+	if !ok {
+		return gvas.GUID{}, false
+	}
+	idv, ok := cinner.Props.Get("ID")
+	if !ok {
+		return gvas.GUID{}, false
+	}
+	idsp, ok := idv.(*gvas.StructProperty)
+	if !ok {
+		return gvas.GUID{}, false
+	}
+	g, ok := idsp.Value.(*gvas.GUIDValue)
+	if !ok {
+		return gvas.GUID{}, false
+	}
+	return gvas.GUID(*g), true
+}
+
 // MaxRankBonus is how far one stat can be raised with pal souls. Ten is the
 // game's cap, worth +3% each.
 const MaxRankBonus = 10

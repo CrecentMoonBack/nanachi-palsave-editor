@@ -578,3 +578,39 @@ button.ghost:hover:not(:disabled) {
 button.apply {
   width: 100%;
 }
+
+/* Ranges and hints: the editor writes to a save, so every field says what it
+   means and what it accepts rather than relying on the input silently
+   clamping. */
+.group-title .range {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 11px;
+  margin-left: 4px;
+}
+.hint {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: -2px 0 2px;
+}
+.field-row input[type="range"] {
+  flex: 1;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.stars {
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+
+.pal-row .camp {
+  color: var(--muted);
+  flex: none;
+  font-size: 11px;
+}
+.toolbar .hint {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}

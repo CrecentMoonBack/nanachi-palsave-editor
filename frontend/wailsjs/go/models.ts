@@ -1,5 +1,19 @@
 export namespace main {
 	
+	export class CampInfo {
+	    index: number;
+	    palCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CampInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.palCount = source["palCount"];
+	    }
+	}
 	export class ItemChoice {
 	    id: string;
 	    name: string;
@@ -76,6 +90,8 @@ export namespace main {
 	    soulDefence: number;
 	    soulCraftSpeed: number;
 	    soulHp: number;
+	    location: string;
+	    camp: number;
 	    passives: PassiveInfo[];
 	
 	    static createFrom(source: any = {}) {
@@ -101,6 +117,8 @@ export namespace main {
 	        this.soulDefence = source["soulDefence"];
 	        this.soulCraftSpeed = source["soulCraftSpeed"];
 	        this.soulHp = source["soulHp"];
+	        this.location = source["location"];
+	        this.camp = source["camp"];
 	        this.passives = this.convertValues(source["passives"], PassiveInfo);
 	    }
 	

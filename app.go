@@ -283,7 +283,45 @@ type PalInfo struct {
 	SoulCraftSpeed int `json:"soulCraftSpeed"`
 	SoulHP         int `json:"soulHp"`
 
+	// Location is where the pal is kept: "box", "party", "base" or "" when the
+	// save records no slot at all.
+	Location string `json:"location"`
+	// Camp is the 1-based base camp number, 0 for a pal that is not at one.
+	Camp int `json:"camp"`
+
 	Passives []PassiveInfo `json:"passives"`
+}
+
+// Pal locations, as the UI groups them.
+const (
+	LocationBox   = "box"
+	LocationParty = "party"
+	LocationBase  = "base"
+)
+
+// palLocation classifies a pal by the container holding it.
+//
+// The palbox and party container ids live in the owner's Players/<uid>.sav, so
+// a player whose save file is missing gets "" rather than a wrong answer.
+// Anything held in some other container is at a base camp: BaseCampSaveData is
+// not parsed into typed form yet, so this cannot say which camp, only that it
+// is not the two containers the player carries.
+func (a *App) palLocation(uid string, p *palsave.Pal) string {
+	cid, ok := p.ContainerID()
+	if !ok {
+		return ""
+	}
+	pf, ok := a.players[uid]
+	if !ok {
+		return ""
+	}
+	if box, ok := pf.save.PalStorageContainer(); ok && box == cid {
+		return LocationBox
+	}
+	if party, ok := pf.save.PartyContainer(); ok && party == cid {
+		return LocationParty
+	}
+	return LocationBase
 }
 
 // PassiveInfo is one passive skill as the UI shows it, in the pal list and in
@@ -335,37 +373,7 @@ func (a *App) Pals(uid string) ([]PalInfo, error) {
 	owned := a.world.PalsOwnedBy(owner)
 	out := make([]PalInfo, 0, len(owned))
 	for _, c := range owned {
-		p := c.Pal
-		species := p.Species()
-
-		info := PalInfo{
-			InstanceID:    c.InstanceID.String(),
-			SpeciesID:     species,
-			Nickname:      p.Nickname(),
-			IsBoss:        p.IsBoss(),
-			Level:         p.Level(),
-			Exp:           p.Exp(),
-			Rank:          p.Rank(),
-			TalentHP:      p.Talent(palsave.TalentHP),
-			TalentMelee:   p.Talent(palsave.TalentMelee),
-			TalentShot:    p.Talent(palsave.TalentShot),
-			TalentDefense: p.Talent(palsave.TalentDefense),
-
-			SoulAttack:     p.RankBonus(palsave.RankAttack),
-			SoulDefence:    p.RankBonus(palsave.RankDefence),
-			SoulCraftSpeed: p.RankBonus(palsave.RankCraftSpeed),
-			SoulHP:         p.RankBonus(palsave.RankHP),
-
-			Name: species,
-		}
-		for _, id := range p.Passives() {
-			info.Passives = append(info.Passives, describePassive(id))
-		}
-		if ko, ok := paldata.PalName(species); ok {
-			info.Name = ko
-		}
-		info.Icon = palIcon(species)
-		out = append(out, info)
+		out = append(out, a.describePal(uid, c))
 	}
 
 	sort.Slice(out, func(i, j int) bool {
@@ -375,6 +383,171 @@ func (a *App) Pals(uid string) ([]PalInfo, error) {
 		return out[i].Level > out[j].Level
 	})
 	return out, nil
+}
+
+// describePal renders one character as the UI shows it. uid is the owner whose
+// palbox and party containers decide the location, and is empty for a base
+// camp pal, which belongs to the guild rather than to anyone.
+func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
+	p := c.Pal
+	species := p.Species()
+
+	info := PalInfo{
+		InstanceID:    c.InstanceID.String(),
+		SpeciesID:     species,
+		Nickname:      p.Nickname(),
+		IsBoss:        p.IsBoss(),
+		Level:         p.Level(),
+		Exp:           p.Exp(),
+		Rank:          p.Rank(),
+		TalentHP:      p.Talent(palsave.TalentHP),
+		TalentMelee:   p.Talent(palsave.TalentMelee),
+		TalentShot:    p.Talent(palsave.TalentShot),
+		TalentDefense: p.Talent(palsave.TalentDefense),
+
+		SoulAttack:     p.RankBonus(palsave.RankAttack),
+		SoulDefence:    p.RankBonus(palsave.RankDefence),
+		SoulCraftSpeed: p.RankBonus(palsave.RankCraftSpeed),
+		SoulHP:         p.RankBonus(palsave.RankHP),
+
+		Name: species,
+	}
+	if uid == "" {
+		info.Location = LocationBase
+		info.Camp = a.campIndex(p)
+	} else {
+		info.Location = a.palLocation(uid, p)
+	}
+	for _, id := range p.Passives() {
+		info.Passives = append(info.Passives, describePassive(id))
+	}
+	if ko, ok := paldata.PalName(species); ok {
+		info.Name = ko
+	}
+	info.Icon = palIcon(species)
+	return info
+}
+
+// --- base camps -----------------------------------------------------------
+
+// basePals returns every pal that belongs to no player.
+//
+// Base camp workers are owned by the guild, not by a member, so their
+// OwnerPlayerUId is absent or zero and PalsOwnedBy never returns them. In the
+// live save that is 91 pals across 5 camps — invisible in a purely
+// player-centric view.
+func (a *App) basePals() []*palsave.CharEntry {
+	var zero gvas.GUID
+	var out []*palsave.CharEntry
+	for _, c := range a.world.Chars() {
+		if c.Pal.IsPlayer() {
+			continue
+		}
+		if o, ok := c.Pal.OwnerPlayerUID(); ok && o != zero {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// campContainers lists the containers holding base camp pals, ordered so a
+// camp keeps the same number between runs. Map iteration is not ordered, so
+// without the sort the camps would renumber themselves on every reload.
+func (a *App) campContainers() []gvas.GUID {
+	seen := map[gvas.GUID]bool{}
+	var out []gvas.GUID
+	for _, c := range a.basePals() {
+		cid, ok := c.Pal.ContainerID()
+		if !ok || seen[cid] {
+			continue
+		}
+		seen[cid] = true
+		out = append(out, cid)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	return out
+}
+
+// campIndex is the 1-based camp number for a pal, or 0 when it has no slot.
+func (a *App) campIndex(p *palsave.Pal) int {
+	cid, ok := p.ContainerID()
+	if !ok {
+		return 0
+	}
+	for i, c := range a.campContainers() {
+		if c == cid {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// CampInfo is one base camp, for the camp filter.
+type CampInfo struct {
+	Index    int `json:"index"`
+	PalCount int `json:"palCount"`
+}
+
+// BaseCamps summarises the guild's camps.
+//
+// Numbered rather than named: BaseCampSaveData is not parsed into typed form,
+// so the save's own camp names and map positions are not available here. The
+// numbering is stable, which is enough to tell them apart.
+func (a *App) BaseCamps() ([]CampInfo, error) {
+	if a.world == nil {
+		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	camps := a.campContainers()
+	counts := make([]int, len(camps))
+	for _, c := range a.basePals() {
+		cid, ok := c.Pal.ContainerID()
+		if !ok {
+			continue
+		}
+		for i, cc := range camps {
+			if cc == cid {
+				counts[i]++
+			}
+		}
+	}
+	out := make([]CampInfo, 0, len(camps))
+	for i := range camps {
+		out = append(out, CampInfo{Index: i + 1, PalCount: counts[i]})
+	}
+	return out, nil
+}
+
+// BasePals lists every base camp pal, with its camp number.
+func (a *App) BasePals() ([]PalInfo, error) {
+	if a.world == nil {
+		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	entries := a.basePals()
+	out := make([]PalInfo, 0, len(entries))
+	for _, c := range entries {
+		out = append(out, a.describePal("", c))
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Camp != out[j].Camp {
+			return out[i].Camp < out[j].Camp
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Level > out[j].Level
+	})
+	return out, nil
+}
+
+// BaseSpecies summarises base camp pals per species, mirroring PalSpecies so
+// the same grid can render either.
+func (a *App) BaseSpecies() ([]SpeciesSummary, error) {
+	pals, err := a.BasePals()
+	if err != nil {
+		return nil, err
+	}
+	return summariseSpecies(pals), nil
 }
 
 // SpeciesSummary groups a player's pals by species, which is how bulk edits
@@ -394,6 +567,11 @@ func (a *App) PalSpecies(uid string) ([]SpeciesSummary, error) {
 	if err != nil {
 		return nil, err
 	}
+	return summariseSpecies(pals), nil
+}
+
+// summariseSpecies groups pals by species for the card grid.
+func summariseSpecies(pals []PalInfo) []SpeciesSummary {
 	byID := map[string]*SpeciesSummary{}
 	for _, p := range pals {
 		s, ok := byID[p.SpeciesID]
@@ -426,7 +604,7 @@ func (a *App) PalSpecies(uid string) ([]SpeciesSummary, error) {
 		}
 		return out[i].Name < out[j].Name
 	})
-	return out, nil
+	return out
 }
 
 // SetPalLevel changes one pal's level, keeping experience consistent.

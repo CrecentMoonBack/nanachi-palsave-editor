@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import "./style.css";
 import {
+  BaseCamps,
+  BasePals,
+  BaseSpecies,
   GiveItem,
   Inventory,
   OpenSave,
@@ -23,6 +26,13 @@ import {
 import { main } from "../wailsjs/go/models";
 
 type Tab = "pals" | "items";
+
+/**
+ * Stands in for a player id when the base camps are being browsed. Their pals
+ * belong to the guild rather than to a member, so there is no uid to select —
+ * but everything else about the view is the same, so it rides the same state.
+ */
+const BASE_SCOPE = "__base__";
 
 /**
  * The save property names behind each editable stat, paired with the label to
@@ -109,8 +119,14 @@ export default function App() {
 
   async function selectPlayer(id: string) {
     setUid(id);
+    setTab("pals");
     setBusy(true);
     try {
+      if (id === BASE_SCOPE) {
+        setSpecies(await BaseSpecies());
+        setItems([]);
+        return;
+      }
       setSpecies(await PalSpecies(id));
       try {
         setItems(await Inventory(id));
@@ -128,6 +144,10 @@ export default function App() {
 
   async function refresh() {
     if (!uid) return;
+    if (uid === BASE_SCOPE) {
+      setSpecies(await BaseSpecies());
+      return;
+    }
     setSpecies(await PalSpecies(uid));
     try {
       setItems(await Inventory(uid));
@@ -149,7 +169,19 @@ export default function App() {
     }
   }
 
+  const isBase = uid === BASE_SCOPE;
   const selected = players.find((p) => p.uid === uid);
+  const [camps, setCamps] = useState<main.CampInfo[]>([]);
+
+  useEffect(() => {
+    if (!save) {
+      setCamps([]);
+      return;
+    }
+    BaseCamps()
+      .then(setCamps)
+      .catch(() => setCamps([]));
+  }, [save]);
 
   return (
     <div className="app">
@@ -185,10 +217,26 @@ export default function App() {
                 </div>
               </button>
             ))}
+
+            {camps.length > 0 && (
+              <>
+                <div className="section-title">거점</div>
+                <button
+                  className={`player ${isBase ? "active" : ""}`}
+                  onClick={() => selectPlayer(BASE_SCOPE)}
+                >
+                  <div className="name">거점 팰</div>
+                  <div className="meta">
+                    거점 {camps.length}곳 · 팰{" "}
+                    {camps.reduce((n, c) => n + c.palCount, 0)}
+                  </div>
+                </button>
+              </>
+            )}
           </div>
 
           <div className="main">
-            {!selected ? (
+            {!selected && !isBase ? (
               <div className="empty">왼쪽에서 편집할 플레이어를 고르세요.</div>
             ) : (
               <>
@@ -199,18 +247,23 @@ export default function App() {
                   >
                     팰 {species.reduce((n, s) => n + s.count, 0)}
                   </button>
-                  <button
-                    className={`tab ${tab === "items" ? "active" : ""}`}
-                    onClick={() => setTab("items")}
-                  >
-                    인벤토리 {items.length}
-                  </button>
+                  {/* Base camp pals belong to the guild, which owns no
+                      inventory of its own — there is nothing to show. */}
+                  {!isBase && (
+                    <button
+                      className={`tab ${tab === "items" ? "active" : ""}`}
+                      onClick={() => setTab("items")}
+                    >
+                      인벤토리 {items.length}
+                    </button>
+                  )}
                 </div>
 
                 {tab === "pals" ? (
                   <PalsTab
                     uid={uid}
                     species={species}
+                    camps={camps}
                     status={status}
                     busy={busy}
                     setBusy={setBusy}
@@ -224,7 +277,7 @@ export default function App() {
                   <ItemsTab
                     uid={uid}
                     items={items}
-                    hasSave={selected.hasSave}
+                    hasSave={selected?.hasSave ?? false}
                     busy={busy}
                     setBusy={setBusy}
                     say={say}
@@ -291,6 +344,7 @@ function Welcome({
 function PalsTab({
   uid,
   species,
+  camps,
   status,
   busy,
   setBusy,
@@ -299,6 +353,7 @@ function PalsTab({
 }: {
   uid: string;
   species: main.SpeciesSummary[];
+  camps: main.CampInfo[];
   status: main.Status | null;
   busy: boolean;
   setBusy: (b: boolean) => void;
@@ -309,8 +364,11 @@ function PalsTab({
   const [level, setLevel] = useState(50);
   const [roster, setRoster] = useState<main.PalInfo[]>([]);
   const [editing, setEditing] = useState("");
+  const [camp, setCamp] = useState(0); // 0 = every camp
 
-  // The whole roster is fetched once per player and filtered here. It is a few
+  const isBase = uid === BASE_SCOPE;
+
+  // The whole roster is fetched once per scope and filtered here. It is a few
   // hundred entries held in memory on the Go side, so paging it per species
   // would cost a round trip to save nothing.
   const loadRoster = useCallback(async () => {
@@ -319,11 +377,11 @@ function PalsTab({
       return;
     }
     try {
-      setRoster(await Pals(uid));
+      setRoster(isBase ? await BasePals() : await Pals(uid));
     } catch (e: any) {
       say(String(e), true);
     }
-  }, [uid, say]);
+  }, [uid, isBase, say]);
 
   useEffect(() => {
     setPick("");
@@ -332,8 +390,15 @@ function PalsTab({
   }, [loadRoster]);
 
   const target = species.find((s) => s.speciesId === pick);
-  const members = pick ? roster.filter((p) => p.speciesId === pick) : [];
+  const inScope = camp ? roster.filter((p) => p.camp === camp) : roster;
+  const members = pick ? inScope.filter((p) => p.speciesId === pick) : [];
   const current = roster.find((p) => p.instanceId === editing) ?? null;
+
+  // The species grid comes from Go and covers every camp, so filtering to one
+  // camp has to narrow the cards too, not just the roster behind them.
+  const cards = camp
+    ? species.filter((s) => inScope.some((p) => p.speciesId === s.speciesId))
+    : species;
 
   // Every edit path refreshes both views: the species grid summarises levels,
   // so a single pal's change has to show up there too.
@@ -359,41 +424,63 @@ function PalsTab({
   return (
     <>
       <div className="toolbar">
-        <label>종족</label>
-        <select
-          value={pick}
-          onChange={(e) => {
-            setPick(e.target.value);
-            setEditing("");
-          }}
-        >
-          <option value="">선택…</option>
-          {species.map((s) => (
-            <option key={s.speciesId} value={s.speciesId}>
-              {s.name} ({s.count})
-            </option>
-          ))}
-        </select>
-        <label>레벨</label>
-        <input
-          type="number"
-          min={1}
-          max={status?.maxLevel ?? 100}
-          value={level}
-          onChange={(e) => setLevel(Number(e.target.value))}
-        />
-        <button onClick={apply} disabled={busy || !pick}>
-          일괄 적용
-          {target ? ` (${target.count}마리)` : ""}
-        </button>
+        {isBase ? (
+          <>
+            <label>거점</label>
+            <select value={camp} onChange={(e) => setCamp(Number(e.target.value))}>
+              <option value={0}>전체 ({roster.length}마리)</option>
+              {camps.map((c) => (
+                <option key={c.index} value={c.index}>
+                  거점 {c.index} ({c.palCount}마리)
+                </option>
+              ))}
+            </select>
+            <span className="hint">
+              거점 팰은 길드 공용이라 주인이 없습니다. 개체 편집은 되지만 종족
+              일괄 변경은 소유자 기준이라 쓸 수 없습니다.
+            </span>
+          </>
+        ) : (
+          <>
+            <label>종족</label>
+            <select
+              value={pick}
+              onChange={(e) => {
+                setPick(e.target.value);
+                setEditing("");
+              }}
+            >
+              <option value="">선택…</option>
+              {species.map((s) => (
+                <option key={s.speciesId} value={s.speciesId}>
+                  {s.name} ({s.count})
+                </option>
+              ))}
+            </select>
+            <label>레벨</label>
+            <input
+              type="number"
+              min={1}
+              max={status?.maxLevel ?? 100}
+              value={level}
+              onChange={(e) => setLevel(Number(e.target.value))}
+            />
+            <button onClick={apply} disabled={busy || !pick}>
+              일괄 적용
+              {target ? ` (${target.count}마리)` : ""}
+            </button>
+          </>
+        )}
       </div>
 
-      {species.length === 0 ? (
-        <div className="empty">이 플레이어는 팰이 없습니다.</div>
+      {cards.length === 0 ? (
+        <div className="empty">
+          {isBase ? "이 거점에는 팰이 없습니다." : "이 플레이어는 팰이 없습니다."}
+        </div>
       ) : (
         <div className="split">
           <div className="grid">
-            {species.map((s) => (
+            {cards.map((s) => (
               <button
                 key={s.speciesId}
                 className={`card ${s.speciesId === pick ? "active" : ""}`}
@@ -438,6 +525,9 @@ function PalsTab({
                       setEditing(p.instanceId === editing ? "" : p.instanceId)
                     }
                   >
+                    {isBase && p.camp > 0 && (
+                      <span className="camp">거점{p.camp}</span>
+                    )}
                     <span className="lv">Lv{p.level}</span>
                     <span className="rank">{"★".repeat(p.rank)}</span>
                     <span className="passives">
@@ -558,27 +648,60 @@ function PalEditor({
         </button>
       </div>
 
-      <div className="field-row">
-        <label>레벨</label>
-        <input
-          type="number"
-          min={1}
-          max={maxLevel}
-          value={level}
-          onChange={(e) => setLevel(Number(e.target.value))}
-        />
-        <label>응축</label>
-        <input
-          type="number"
-          min={1}
-          max={maxRank}
-          value={rank}
-          onChange={(e) => setRank(Number(e.target.value))}
-        />
+      <div className="field-group">
+        <div className="group-title">
+          레벨 <span className="range">1–{maxLevel}</span>
+        </div>
+        <div className="hint">경험치도 그 레벨에 맞춰 함께 바뀝니다.</div>
+        <div className="field-row">
+          <input
+            type="number"
+            min={1}
+            max={maxLevel}
+            value={level}
+            onChange={(e) => setLevel(Number(e.target.value))}
+          />
+          <input
+            type="range"
+            min={1}
+            max={maxLevel}
+            value={level}
+            onChange={(e) => setLevel(Number(e.target.value))}
+          />
+        </div>
       </div>
 
       <div className="field-group">
-        <div className="group-title">개체값 (0–{maxTalent})</div>
+        <div className="group-title">
+          응축 <span className="range">1–{maxRank}</span>
+        </div>
+        <div className="hint">
+          같은 팰을 여러 마리 합쳐 올리는 등급입니다. 1이 합치지 않은 상태,
+          {maxRank}가 풀농축(별 {maxRank - 1}개)이고 공격과 방어가 올라갑니다.
+        </div>
+        <div className="field-row">
+          <input
+            type="number"
+            min={1}
+            max={maxRank}
+            value={rank}
+            onChange={(e) => setRank(Number(e.target.value))}
+          />
+          <span className="stars">
+            {"★".repeat(Math.max(0, rank - 1)) +
+              "☆".repeat(Math.max(0, maxRank - rank))}
+          </span>
+        </div>
+      </div>
+
+      <div className="field-group">
+        <div className="group-title">
+          개체값 <span className="range">0–{maxTalent}</span>
+        </div>
+        <div className="hint">
+          태어날 때 정해지는 타고난 자질이라 게임에서는 나중에 못 바꿉니다.
+          {maxTalent}이 최대입니다.
+        </div>
         <div className="stat-grid">
           {TALENTS.map((t) => (
             <label key={t.prop} className="stat">
@@ -598,7 +721,13 @@ function PalEditor({
       </div>
 
       <div className="field-group">
-        <div className="group-title">팰 영혼 (0–{maxSoul}, 단계당 +3%)</div>
+        <div className="group-title">
+          팰 영혼 <span className="range">0–{maxSoul}</span>
+        </div>
+        <div className="hint">
+          팰 영혼 아이템을 먹여 올리는 강화로, 항목마다 따로 쌓입니다.
+          개체값과 달리 게임 안에서도 올릴 수 있는 값입니다.
+        </div>
         <div className="stat-grid">
           {SOULS.map((s) => (
             <label key={s.prop} className="stat">
@@ -673,7 +802,11 @@ function PassivePicker({
   return (
     <div className="field-group">
       <div className="group-title">
-        패시브 ({chosen.length}/{max})
+        패시브 <span className="range">{chosen.length}/{max}</span>
+      </div>
+      <div className="hint">
+        칩을 누르면 빠지고, 아래에서 검색해 고르면 추가됩니다. 이름 위에 잠깐
+        올려두면 효과 설명이 뜹니다. 빨간 칩은 나쁜 패시브입니다.
       </div>
 
       <div className="chips">
