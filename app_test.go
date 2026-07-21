@@ -77,6 +77,69 @@ func TestRealSaveEveryPalIsNamedAndDrawn(t *testing.T) {
 	}
 }
 
+// TestBaseCampsAreGuildScopedAndComplete pins the two ways deriving camps from
+// pals got them wrong.
+//
+// Camps used to be found by grouping ownerless pals by container. That looks
+// equivalent and is not: it cannot see a camp with no workers, and it has no
+// idea whose camp it is, so on a shared server every guild's camps showed up
+// in everyone's list. The fixture has two guilds — four camps and two — and
+// one of the four is empty, so both faults are visible in it.
+func TestBaseCampsAreGuildScopedAndComplete(t *testing.T) {
+	if _, err := os.Stat(fixture); err != nil {
+		t.Skip("no save fixture; see scripts/setup.sh --all")
+	}
+	a := NewApp()
+	if _, err := a.OpenSave(fixture); err != nil {
+		t.Fatal(err)
+	}
+	players, err := a.Players()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seen := map[int]bool{} // camp counts observed, keyed by count
+	var sawEmpty bool      // a camp with no workers survived the trip
+	for _, p := range players {
+		camps, err := a.BaseCamps(p.UID)
+		if err != nil {
+			t.Fatalf("BaseCamps(%s): %v", p.Name, err)
+		}
+		pals, err := a.BasePals(p.UID)
+		if err != nil {
+			t.Fatalf("BasePals(%s): %v", p.Name, err)
+		}
+
+		total := 0
+		for _, c := range camps {
+			total += c.PalCount
+			if c.PalCount == 0 {
+				sawEmpty = true
+			}
+		}
+		if total != len(pals) {
+			t.Errorf("%s: camps hold %d pals but BasePals returned %d",
+				p.Name, total, len(pals))
+		}
+		// Every pal must land in one of the camps offered, or the filter and
+		// the listing disagree about which guild is being shown.
+		for _, x := range pals {
+			if x.Camp < 1 || x.Camp > len(camps) {
+				t.Errorf("%s: pal %s has camp %d, outside 1..%d",
+					p.Name, x.Name, x.Camp, len(camps))
+			}
+		}
+		seen[len(camps)] = true
+	}
+
+	if !sawEmpty {
+		t.Error("no empty camp in the fixture; a camp with no workers is the case that used to vanish")
+	}
+	if len(seen) < 2 {
+		t.Errorf("every player saw the same number of camps (%v); the fixture has two guilds with different camp counts, so this is not scoping by guild", seen)
+	}
+}
+
 // speciesInSave decodes the fixture and returns every non-player species with
 // a count.
 func speciesInSave(t *testing.T) map[string]int {

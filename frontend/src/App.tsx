@@ -155,14 +155,14 @@ export default function App() {
   const [camps, setCamps] = useState<main.CampInfo[]>([]);
 
   useEffect(() => {
-    if (!save) {
+    if (!save || !uid) {
       setCamps([]);
       return;
     }
-    BaseCamps()
+    BaseCamps(uid)
       .then(setCamps)
       .catch(() => setCamps([]));
-  }, [save]);
+  }, [save, uid]);
 
   return (
     <div className="app">
@@ -370,7 +370,7 @@ function PalsTab({
       return;
     }
     try {
-      const [mine, base] = await Promise.all([Pals(uid), BasePals()]);
+      const [mine, base] = await Promise.all([Pals(uid), BasePals(uid)]);
       setRoster(mine);
       setBasePals(base);
     } catch (e: any) {

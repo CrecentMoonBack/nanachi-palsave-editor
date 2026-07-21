@@ -2,6 +2,7 @@ export namespace main {
 	
 	export class CampInfo {
 	    index: number;
+	    name: string;
 	    palCount: number;
 	
 	    static createFrom(source: any = {}) {
@@ -11,6 +12,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.index = source["index"];
+	        this.name = source["name"];
 	        this.palCount = source["palCount"];
 	    }
 	}

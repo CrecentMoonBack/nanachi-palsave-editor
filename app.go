@@ -414,7 +414,6 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 	}
 	if uid == "" {
 		info.Location = LocationBase
-		info.Camp = a.campIndex(p)
 	} else {
 		info.Location = a.palLocation(uid, p)
 	}
@@ -430,103 +429,96 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 
 // --- base camps -----------------------------------------------------------
 
-// basePals returns every pal that belongs to no player.
+// guildCamps returns the camps belonging to a player's guild, in a stable
+// order so a camp keeps the same number between runs.
 //
-// Base camp workers are owned by the guild, not by a member, so their
-// OwnerPlayerUId is absent or zero and PalsOwnedBy never returns them. In the
-// live save that is 91 pals across 5 camps — invisible in a purely
-// player-centric view.
-func (a *App) basePals() []*palsave.CharEntry {
-	var zero gvas.GUID
-	var out []*palsave.CharEntry
+// Read from BaseCampSaveData and filtered by the owning guild, which matters
+// twice over: a server holds several guilds' camps, and a camp with no workers
+// exists just the same. Deriving camps from where pals are — the obvious
+// shortcut — gets both wrong, silently.
+func (a *App) guildCamps(uid string) []palsave.BaseCamp {
+	owner, err := gvas.ParseGUID(uid)
+	if err != nil {
+		return nil
+	}
+	guild, ok := a.world.GuildOf(owner)
+	if !ok {
+		return nil
+	}
+	var out []palsave.BaseCamp
+	for _, c := range a.world.BaseCamps() {
+		if c.GuildID == guild.ID {
+			out = append(out, c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID.String() < out[j].ID.String() })
+	return out
+}
+
+// campPals maps each of a guild's camp containers to the pals inside it.
+func (a *App) campPals(camps []palsave.BaseCamp) map[gvas.GUID][]*palsave.CharEntry {
+	want := map[gvas.GUID]bool{}
+	for _, c := range camps {
+		want[c.ContainerID] = true
+	}
+	out := map[gvas.GUID][]*palsave.CharEntry{}
 	for _, c := range a.world.Chars() {
 		if c.Pal.IsPlayer() {
 			continue
 		}
-		if o, ok := c.Pal.OwnerPlayerUID(); ok && o != zero {
-			continue
-		}
-		out = append(out, c)
-	}
-	return out
-}
-
-// campContainers lists the containers holding base camp pals, ordered so a
-// camp keeps the same number between runs. Map iteration is not ordered, so
-// without the sort the camps would renumber themselves on every reload.
-func (a *App) campContainers() []gvas.GUID {
-	seen := map[gvas.GUID]bool{}
-	var out []gvas.GUID
-	for _, c := range a.basePals() {
 		cid, ok := c.Pal.ContainerID()
-		if !ok || seen[cid] {
+		if !ok || !want[cid] {
 			continue
 		}
-		seen[cid] = true
-		out = append(out, cid)
+		out[cid] = append(out[cid], c)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out
-}
-
-// campIndex is the 1-based camp number for a pal, or 0 when it has no slot.
-func (a *App) campIndex(p *palsave.Pal) int {
-	cid, ok := p.ContainerID()
-	if !ok {
-		return 0
-	}
-	for i, c := range a.campContainers() {
-		if c == cid {
-			return i + 1
-		}
-	}
-	return 0
 }
 
 // CampInfo is one base camp, for the camp filter.
 type CampInfo struct {
-	Index    int `json:"index"`
-	PalCount int `json:"palCount"`
+	Index    int    `json:"index"`
+	Name     string `json:"name"`
+	PalCount int    `json:"palCount"`
 }
 
-// BaseCamps summarises the guild's camps.
+// BaseCamps summarises the camps of the given player's guild.
 //
-// Numbered rather than named: BaseCampSaveData is not parsed into typed form,
-// so the save's own camp names and map positions are not available here. The
-// numbering is stable, which is enough to tell them apart.
-func (a *App) BaseCamps() ([]CampInfo, error) {
+// Numbered rather than named for display: the save's own names are the game's
+// untranslated placeholders ("新規生成拠点テンプレート名4(仮)"), which say less
+// than a number does. The real name is carried anyway for anyone who wants it.
+func (a *App) BaseCamps(uid string) ([]CampInfo, error) {
 	if a.world == nil {
 		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
 	}
-	camps := a.campContainers()
-	counts := make([]int, len(camps))
-	for _, c := range a.basePals() {
-		cid, ok := c.Pal.ContainerID()
-		if !ok {
-			continue
-		}
-		for i, cc := range camps {
-			if cc == cid {
-				counts[i]++
-			}
-		}
-	}
+	camps := a.guildCamps(uid)
+	pals := a.campPals(camps)
 	out := make([]CampInfo, 0, len(camps))
-	for i := range camps {
-		out = append(out, CampInfo{Index: i + 1, PalCount: counts[i]})
+	for i, c := range camps {
+		out = append(out, CampInfo{
+			Index:    i + 1,
+			Name:     c.Name,
+			PalCount: len(pals[c.ContainerID]),
+		})
 	}
 	return out, nil
 }
 
-// BasePals lists every base camp pal, with its camp number.
-func (a *App) BasePals() ([]PalInfo, error) {
+// BasePals lists the pals working at the given player's guild's camps.
+func (a *App) BasePals(uid string) ([]PalInfo, error) {
 	if a.world == nil {
 		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
 	}
-	entries := a.basePals()
-	out := make([]PalInfo, 0, len(entries))
-	for _, c := range entries {
-		out = append(out, a.describePal("", c))
+	camps := a.guildCamps(uid)
+	pals := a.campPals(camps)
+
+	var out []PalInfo
+	for i, c := range camps {
+		for _, e := range pals[c.ContainerID] {
+			info := a.describePal("", e)
+			info.Camp = i + 1
+			out = append(out, info)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Camp != out[j].Camp {
