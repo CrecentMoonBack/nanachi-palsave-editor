@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wo420/nanachi-palsave-editor/internal/gvas"
-	"github.com/wo420/nanachi-palsave-editor/internal/oodle"
-	"github.com/wo420/nanachi-palsave-editor/internal/paldata"
-	"github.com/wo420/nanachi-palsave-editor/internal/palsave"
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/gvas"
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/oodle"
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/paldata"
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/palsave"
 )
 
 func main() {

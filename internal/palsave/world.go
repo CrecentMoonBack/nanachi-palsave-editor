@@ -3,7 +3,7 @@ package palsave
 import (
 	"fmt"
 
-	"github.com/wo420/nanachi-palsave-editor/internal/gvas"
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/gvas"
 )
 
 // World is an editable view over a decoded Level.sav.

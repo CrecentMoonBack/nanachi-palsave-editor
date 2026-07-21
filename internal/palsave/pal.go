@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wo420/nanachi-palsave-editor/internal/gvas"
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/gvas"
 )
 
 // Pal is a typed view over one character's save parameters.

@@ -1,4 +1,4 @@
-module github.com/wo420/nanachi-palsave-editor
+module github.com/CrecentMoonBack/nanachi-palsave-editor
 
 go 1.23.0
 

@@ -9,7 +9,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 
-	"github.com/wo420/nanachi-palsave-editor/internal/icons"
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/icons"
 )
 
 //go:embed all:frontend/dist

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wo420/nanachi-palsave-editor/internal/gvas"
-	"github.com/wo420/nanachi-palsave-editor/internal/oodle"
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/gvas"
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/oodle"
 )
 
 // loadWorld decodes the live-server fixture down to worldSaveData.
