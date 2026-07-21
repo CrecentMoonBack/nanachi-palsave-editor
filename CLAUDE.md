@@ -5,6 +5,34 @@ Palworld dedicated-server save editor. Go + Wails v2 + React/TS.
 Sibling to `NanachiDeprotector2` — same stack, same DLL-binding approach,
 same Nanachi branding. Reuse its conventions rather than inventing new ones.
 
+## What it is for
+
+Open a save, pick a player, and edit what that player owns:
+
+- inventory contents
+- palbox pals
+- pals working at each base camp
+- per-pal enhancement data: level, condense rank, passive skills,
+  work suitability, IVs
+
+Pal and item artwork is shown when available, Korean names always. The whole
+flow is browse-then-edit, so read paths matter as much as write paths.
+
+## Distribution stance
+
+The project is public, so **the repository ships no game assets**. Pal and item
+artwork belongs to Pocketpair; taking it from a fan site or from another tool's
+repo changes who we take it from, not whether we may.
+
+What ships: the ID-to-filename mapping, which is just the game's own naming.
+What does not: any image. The GUI reads `assets/icons/` beside the executable
+and falls back to text names when it is absent, so the tool is fully usable
+with no artwork at all. `scripts/fetch-icons.sh` populates that folder locally,
+the same way `docs/THIRD_PARTY.md` has you clone ooz rather than vendoring it.
+
+Do not add a scraper for a third-party fan site. It puts our load on someone
+who never agreed to it, and it breaks the moment they change their markup.
+
 ## Layout
 
 ```
