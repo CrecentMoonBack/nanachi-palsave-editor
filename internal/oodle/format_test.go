@@ -79,7 +79,12 @@ func TestParseHeaderRejectsGarbage(t *testing.T) {
 		data []byte
 	}{
 		{"empty", nil},
-		{"too small", make([]byte, 20)},
+		{"shorter than a header", make([]byte, 11)},
+		{"CNK truncated before its nested header", func() []byte {
+			b := make([]byte, 16)
+			copy(b[8:11], "CNK")
+			return b
+		}()},
 		{"bad magic", func() []byte {
 			b := make([]byte, 64)
 			copy(b[8:11], "XXX")

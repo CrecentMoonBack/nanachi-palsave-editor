@@ -13,3 +13,8 @@ testdata/Players/
 third_party/oodle/oo2core*.dll
 
 *.exe
+
+# vendored ooz clone (fetch via docs/THIRD_PARTY.md), and its build output
+third_party/oodle/ooz-zao/
+third_party/oodle/ooz/
+third_party/oodle/*.dll

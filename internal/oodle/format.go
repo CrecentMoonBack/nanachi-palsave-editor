@@ -78,7 +78,9 @@ const (
 // ParseHeader reads the outer header. It does not touch the payload.
 func ParseHeader(data []byte) (Header, error) {
 	var h Header
-	if len(data) < cnkHeaderSize {
+	// Only CNK needs the larger header; PlM and PlZ are valid at 12 bytes
+	// plus payload, which small saves really do hit.
+	if len(data) < headerSize {
 		return h, ErrTooSmall
 	}
 
@@ -90,6 +92,9 @@ func ParseHeader(data []byte) (Header, error) {
 
 	// CNK nests a second header immediately after the first.
 	if string(h.Magic[:]) == "CNK" {
+		if len(data) < cnkHeaderSize {
+			return h, ErrTooSmall
+		}
 		h.UncompressedLen = binary.LittleEndian.Uint32(data[12:16])
 		h.CompressedLen = binary.LittleEndian.Uint32(data[16:20])
 		copy(h.Magic[:], data[20:23])
