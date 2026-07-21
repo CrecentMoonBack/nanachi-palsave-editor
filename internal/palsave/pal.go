@@ -195,14 +195,27 @@ func (p *Pal) Rank() int {
 
 // SetRank sets the condense rank.
 func (p *Pal) SetRank(rank int) error {
-	if rank < 1 || rank > 5 {
-		return fmt.Errorf("palsave: condense rank %d out of range 1..5", rank)
+	if rank < 1 || rank > MaxRank {
+		return fmt.Errorf("palsave: condense rank %d out of range 1..%d", rank, MaxRank)
 	}
 	return p.setRawByte("Rank", uint8(rank))
 }
 
+// MaxRank is a fully condensed pal; MaxTalent is a perfect IV. Both are the
+// game's own ceilings, named so the validator and the UI cannot drift apart.
+const (
+	MaxRank   = 5
+	MaxTalent = 100
+)
+
 // Talent reports one of the pal's IVs by property name.
-func (p *Pal) Talent(name string) int {
+func (p *Pal) Talent(name string) int { return p.rawByte(name) }
+
+// rawByte reads a numeric ByteProperty, or 0 when the property is absent.
+//
+// Absent genuinely means zero for these: an un-upgraded pal has no
+// Rank_Attack property at all, and a pal with no Talent_HP rolled 0.
+func (p *Pal) rawByte(name string) int {
 	v, ok := p.params.Get(name)
 	if !ok {
 		return 0
@@ -224,8 +237,8 @@ const (
 
 // SetTalent sets an IV. The game's own range is 0..100.
 func (p *Pal) SetTalent(name string, value int) error {
-	if value < 0 || value > 100 {
-		return fmt.Errorf("palsave: talent %s value %d out of range 0..100", name, value)
+	if value < 0 || value > MaxTalent {
+		return fmt.Errorf("palsave: talent %s value %d out of range 0..%d", name, value, MaxTalent)
 	}
 	return p.setRawByte(name, uint8(value))
 }
@@ -238,10 +251,21 @@ const (
 	RankHP         = "Rank_HP"
 )
 
-// SetRankBonus sets one of the souls-upgrade counters, 0..10 in game.
+// MaxRankBonus is how far one stat can be raised with pal souls. Ten is the
+// game's cap, worth +3% each.
+const MaxRankBonus = 10
+
+// RankBonus reports how many souls have been spent on one stat.
+func (p *Pal) RankBonus(name string) int { return p.rawByte(name) }
+
+// SetRankBonus sets one of the souls-upgrade counters.
+//
+// The bound is the game's 0..10, not the byte's 0..255: a higher value is not
+// a stronger pal, it is a number the game will clamp or reject, and writing it
+// only makes the save disagree with what the UI showed.
 func (p *Pal) SetRankBonus(name string, value int) error {
-	if value < 0 || value > 255 {
-		return fmt.Errorf("palsave: %s value %d out of range", name, value)
+	if value < 0 || value > MaxRankBonus {
+		return fmt.Errorf("palsave: %s value %d out of range 0..%d", name, value, MaxRankBonus)
 	}
 	return p.setRawByte(name, uint8(value))
 }
