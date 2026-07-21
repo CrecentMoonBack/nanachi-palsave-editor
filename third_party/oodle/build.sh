@@ -17,7 +17,13 @@ set -euo pipefail
 cd "$(dirname "$0")"
 SRC=ooz-zao
 OUT=nanachi_ooz.dll
-OBJ=$(mktemp -d)
+# Objects go in a relative directory beside this script, not mktemp -d. A
+# non-ASCII TMPDIR (C:/Users/<한글>/AppData/Local/Temp on a Korean Windows)
+# reaches the assembler mangled and it fails with "can't create ...kraken.o".
+# Every path handed to g++ here is relative to this directory, so none of them
+# carry the username at all.
+OBJ=obj
+rm -rf "$OBJ" && mkdir -p "$OBJ"
 trap 'rm -rf "$OBJ"' EXIT
 
 if [ ! -f "$SRC/simde/simde/x86/sse2.h" ]; then
