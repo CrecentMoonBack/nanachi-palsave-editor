@@ -45,6 +45,20 @@ func Decode(data []byte, opts *Options) (*File, error) {
 	return &File{Header: h, Root: root, Trailer: r.Rest()}, nil
 }
 
+// ReadProperties consumes a property block from r.
+//
+// Exported because several Palworld blobs are themselves property blocks
+// wrapped in a byte array, so they are decoded by pointing this at a
+// sub-buffer rather than by reimplementing the format.
+func ReadProperties(r *Reader, path string, opts *Options) (*Properties, error) {
+	return readProperties(r, path, opts)
+}
+
+// WriteProperties emits a property block, the inverse of ReadProperties.
+func WriteProperties(w *Writer, p *Properties) error {
+	return writeProperties(w, p)
+}
+
 // readProperties consumes named properties until the "None" terminator.
 func readProperties(r *Reader, path string, opts *Options) (*Properties, error) {
 	props := NewProperties()
