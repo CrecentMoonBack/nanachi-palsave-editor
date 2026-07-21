@@ -28,6 +28,42 @@ If ooz's licensing is ever clarified differently, revisit this file first.
 Oodle. It is also not an option in practice: UE5 statically links Oodle into the
 game executable, so a Palworld install contains no such DLL to borrow.
 
+## Reference data (`internal/paldata/data/`)
+
+The item and pal tables embedded by `internal/paldata` are derived from the
+JSON under `data/json/` in <https://github.com/oMaN-Rod/palworld-save-pal>
+(rev `c1668830ad984caf46256c3619f8564daab9de8d`, 2026-07-15): `items.json`,
+`pals.json`, `elements.json` and the `l10n/ko` + `l10n/en` counterparts.
+
+They are not vendored verbatim. Fields the editor does not use were dropped and
+the localisation files merged in, so what ships is three files totalling ~1.2 MB:
+
+| file | size | entries |
+| --- | --- | --- |
+| `data/items.json` | 926 KB | 2372 |
+| `data/pals.json` | 253 KB | 809 |
+| `data/elements.json` | 849 B | 9 |
+
+### Provenance and licensing — the same unresolved question as ooz
+
+This is **extracted game data**: ids, stats, icon filenames and localised
+strings lifted out of Palworld's own data tables. palworld-save-pal is MIT, but
+that covers the code it wrote, not the game data it redistributes. Pocketpair
+owns the underlying content and has granted nobody a licence to it. So the
+honest position is the same one this file already takes on ooz: we are relying
+on an upstream project's implicit claim, we cannot point at a licence grant,
+and if that ever gets clarified differently this file is the first thing to
+revisit.
+
+What makes it defensible in practice is that the strings are facts about the
+game — a pal's id, its Korean name, the filename of its icon — and the
+alternative is worse: a runtime scraper against a fan site, which `CLAUDE.md`
+rules out for good reason.
+
+**No artwork is embedded, ever.** `internal/paldata` maps ids to icon
+*filenames* only; the `.webp` files themselves live in `assets/icons/` beside
+the executable and the GUI falls back to text names when they are absent.
+
 ## Building the native codec
 
 ```sh
