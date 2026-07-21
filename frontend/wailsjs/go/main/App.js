@@ -10,10 +10,6 @@ export function BasePals() {
   return window['go']['main']['App']['BasePals']();
 }
 
-export function BaseSpecies() {
-  return window['go']['main']['App']['BaseSpecies']();
-}
-
 export function GiveItem(arg1, arg2, arg3) {
   return window['go']['main']['App']['GiveItem'](arg1, arg2, arg3);
 }
@@ -60,10 +56,6 @@ export function SetItemCount(arg1, arg2, arg3) {
 
 export function SetPalLevel(arg1, arg2) {
   return window['go']['main']['App']['SetPalLevel'](arg1, arg2);
-}
-
-export function SetPalLevelBulk(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SetPalLevelBulk'](arg1, arg2, arg3);
 }
 
 export function SetPalPassives(arg1, arg2) {

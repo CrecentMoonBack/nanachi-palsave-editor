@@ -6,8 +6,6 @@ export function BaseCamps():Promise<Array<main.CampInfo>>;
 
 export function BasePals():Promise<Array<main.PalInfo>>;
 
-export function BaseSpecies():Promise<Array<main.SpeciesSummary>>;
-
 export function GiveItem(arg1:string,arg2:string,arg3:number):Promise<number>;
 
 export function Inventory(arg1:string):Promise<Array<main.ItemInfo>>;
@@ -31,8 +29,6 @@ export function SearchPassives(arg1:string):Promise<Array<main.PassiveInfo>>;
 export function SetItemCount(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function SetPalLevel(arg1:string,arg2:number):Promise<void>;
-
-export function SetPalLevelBulk(arg1:string,arg2:string,arg3:number):Promise<number>;
 
 export function SetPalPassives(arg1:string,arg2:Array<string>):Promise<void>;
 

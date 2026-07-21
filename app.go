@@ -77,10 +77,10 @@ type Status struct {
 
 func (a *App) Status() Status {
 	s := Status{
-		IconsOK:     icons.Available(),
-		IconCount:   icons.Count(),
-		SaveOpen:    a.world != nil,
-		SavePath:    a.levelPath,
+		IconsOK:      icons.Available(),
+		IconCount:    icons.Count(),
+		SaveOpen:     a.world != nil,
+		SavePath:     a.levelPath,
 		MaxPassives:  MaxPassives,
 		MaxLevel:     palsave.MaxKnownLevel,
 		MaxRank:      palsave.MaxRank,
@@ -540,16 +540,6 @@ func (a *App) BasePals() ([]PalInfo, error) {
 	return out, nil
 }
 
-// BaseSpecies summarises base camp pals per species, mirroring PalSpecies so
-// the same grid can render either.
-func (a *App) BaseSpecies() ([]SpeciesSummary, error) {
-	pals, err := a.BasePals()
-	if err != nil {
-		return nil, err
-	}
-	return summariseSpecies(pals), nil
-}
-
 // SpeciesSummary groups a player's pals by species, which is how bulk edits
 // are chosen.
 type SpeciesSummary struct {
@@ -618,37 +608,6 @@ func (a *App) SetPalLevel(instanceID string, level int) error {
 		return fmt.Errorf("레벨 %d 에 해당하는 경험치가 없습니다 (1-%d)", level, palsave.MaxKnownLevel)
 	}
 	return p.SetLevelWithExp(level, exp)
-}
-
-// SetPalLevelBulk applies a level to every pal of a species owned by a player,
-// returning how many changed.
-func (a *App) SetPalLevelBulk(uid, speciesID string, level int) (int, error) {
-	if a.world == nil {
-		return 0, fmt.Errorf("세이브가 열려 있지 않습니다")
-	}
-	owner, err := gvas.ParseGUID(uid)
-	if err != nil {
-		return 0, err
-	}
-	exp, ok := palsave.TotalPalExpForLevel(level)
-	if !ok {
-		return 0, fmt.Errorf("레벨 %d 에 해당하는 경험치가 없습니다 (1-%d)", level, palsave.MaxKnownLevel)
-	}
-
-	n := 0
-	for _, c := range a.world.PalsOwnedBy(owner) {
-		if !strings.EqualFold(c.Pal.Species(), speciesID) {
-			continue
-		}
-		if err := c.Pal.SetLevelWithExp(level, exp); err != nil {
-			return n, err
-		}
-		n++
-	}
-	if n == 0 {
-		return 0, fmt.Errorf("%s 종족의 팰이 없습니다", speciesID)
-	}
-	return n, nil
 }
 
 // SetPalRank sets a pal's condense rank.

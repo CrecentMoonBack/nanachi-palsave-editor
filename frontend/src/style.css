@@ -614,3 +614,30 @@ button.apply {
   flex: 1;
   min-width: 0;
 }
+
+/* Sub-views inside the pal tab: where a pal is kept is the first thing you
+   filter by, so it sits above the toolbar rather than inside it. */
+.subtabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.subtab {
+  padding: 6px 14px;
+  border-radius: 18px;
+  font-size: 13px;
+  background: transparent;
+}
+.subtab.active {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.subtab .n {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: 3px;
+}
+.subtab.active .n {
+  color: var(--accent-dim);
+}
