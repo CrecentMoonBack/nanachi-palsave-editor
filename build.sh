@@ -20,6 +20,25 @@ echo "building cli..."
 go build -o build/bin/palsave.exe ./cmd/palsave
 
 cp "$DLL" build/bin/
+
+# Artwork goes beside the executable, which is the layout internal/icons looks
+# in first and the one docs/THIRD_PARTY.md describes. Without this the build
+# only finds icons through the working-tree fallback, so it renders correctly
+# when launched from build/bin and shows placeholders for everything when
+# launched from anywhere else — which reads as "half the images are broken".
+#
+# Copied rather than linked so the folder can be zipped and shipped as-is;
+# -u keeps a rebuild from re-copying 34 MB it already has.
+if [ -d assets/icons ]; then
+    echo "copying artwork beside the executable..."
+    mkdir -p build/bin/assets/icons
+    cp -ru assets/icons/. build/bin/assets/icons/
+    echo "  $(find build/bin/assets/icons -name '*.webp' | wc -l | tr -d ' ') icons"
+else
+    echo "no assets/icons to copy; the app will fall back to text names."
+    echo "  run scripts/fetch-icons.sh to populate it."
+fi
+
 echo
 ls -la build/bin/
 echo
