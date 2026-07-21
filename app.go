@@ -3,25 +3,590 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"github.com/wo420/nanachi-palsave-editor/internal/gvas"
+	"github.com/wo420/nanachi-palsave-editor/internal/icons"
+	"github.com/wo420/nanachi-palsave-editor/internal/oodle"
+	"github.com/wo420/nanachi-palsave-editor/internal/paldata"
+	"github.com/wo420/nanachi-palsave-editor/internal/palsave"
 )
 
-// App struct
+// App is the Wails binding surface.
+//
+// Every method is safe to call before a save is open — they return an error
+// rather than panicking, because a UI calls them in whatever order the user
+// clicks, not the order the code expects.
 type App struct {
 	ctx context.Context
+
+	levelPath string
+	saveType  oodle.SaveType
+	file      *gvas.File
+	world     *palsave.World
+
+	// players maps a player UID to their decoded Players/<uid>.sav.
+	players map[string]*playerFile
 }
 
-// NewApp creates a new App application struct
+type playerFile struct {
+	path string
+	save *palsave.PlayerSave
+}
+
 func NewApp() *App {
-	return &App{}
+	return &App{players: map[string]*playerFile{}}
 }
 
-// startup is called when the app starts. The context is saved
-// so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
+// --- status ---------------------------------------------------------------
+
+// Status describes what the app can currently do, for the opening screen.
+type Status struct {
+	CodecOK    bool   `json:"codecOk"`
+	CodecError string `json:"codecError"`
+	IconsOK    bool   `json:"iconsOk"`
+	IconCount  int    `json:"iconCount"`
+	SaveOpen   bool   `json:"saveOpen"`
+	SavePath   string `json:"savePath"`
+}
+
+func (a *App) Status() Status {
+	s := Status{
+		IconsOK:   icons.Available(),
+		IconCount: icons.Count(),
+		SaveOpen:  a.world != nil,
+		SavePath:  a.levelPath,
+	}
+	if err := oodle.Available(); err != nil {
+		s.CodecError = err.Error()
+	} else {
+		s.CodecOK = true
+	}
+	return s
+}
+
+// --- opening --------------------------------------------------------------
+
+// PickSaveFile opens a native file dialog and returns the chosen path.
+func (a *App) PickSaveFile() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Level.sav 선택",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "팰월드 세이브", Pattern: "*.sav"},
+		},
+	})
+}
+
+// SaveInfo summarises an opened save.
+type SaveInfo struct {
+	Path        string `json:"path"`
+	Format      string `json:"format"`
+	Engine      string `json:"engine"`
+	SizeBytes   int    `json:"sizeBytes"`
+	PlayerCount int    `json:"playerCount"`
+	PalCount    int    `json:"palCount"`
+	ItemSlots   int    `json:"itemSlots"`
+	// PlayerSaves is how many Players/<uid>.sav files were found alongside.
+	PlayerSaves int `json:"playerSaves"`
+}
+
+// OpenSave loads Level.sav and every player save beside it.
+//
+// The player saves are not optional extras: a player's inventory container ids
+// live there, not in the world save, so without them an inventory cannot be
+// located at all.
+func (a *App) OpenSave(levelPath string) (*SaveInfo, error) {
+	if levelPath == "" {
+		return nil, fmt.Errorf("경로가 비어 있습니다")
+	}
+	data, err := os.ReadFile(levelPath)
+	if err != nil {
+		return nil, err
+	}
+	raw, st, err := oodle.DecompressSav(data)
+	if err != nil {
+		return nil, fmt.Errorf("압축 해제 실패: %w", err)
+	}
+	opts := gvas.PalworldOptions()
+	f, err := gvas.Decode(raw, opts)
+	if err != nil {
+		return nil, fmt.Errorf("디코드 실패: %w", err)
+	}
+	w, err := palsave.NewWorld(f, opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := w.Load(); err != nil {
+		return nil, err
+	}
+
+	a.levelPath = levelPath
+	a.saveType = st
+	a.file = f
+	a.world = w
+	a.players = map[string]*playerFile{}
+	a.loadPlayerSaves()
+
+	info := &SaveInfo{
+		Path:        levelPath,
+		Format:      st.String(),
+		Engine:      f.Header.EngineVersion(),
+		SizeBytes:   len(data),
+		ItemSlots:   len(w.ItemSlots()),
+		PlayerSaves: len(a.players),
+	}
+	for _, c := range w.Chars() {
+		if c.Pal.IsPlayer() {
+			info.PlayerCount++
+		} else {
+			info.PalCount++
+		}
+	}
+	return info, nil
+}
+
+// loadPlayerSaves reads every .sav in the sibling Players directory.
+//
+// Failures are skipped rather than fatal: one unreadable player file should
+// not stop the rest of the save from being editable.
+func (a *App) loadPlayerSaves() {
+	dir := filepath.Join(filepath.Dir(a.levelPath), "Players")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".sav") {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		raw, _, err := oodle.DecompressSav(data)
+		if err != nil {
+			continue
+		}
+		f, err := gvas.Decode(raw, gvas.PalworldOptions())
+		if err != nil {
+			continue
+		}
+		ps, err := palsave.NewPlayerSave(f)
+		if err != nil {
+			continue
+		}
+		uid, ok := ps.PlayerUID()
+		if !ok {
+			continue
+		}
+		a.players[uid.String()] = &playerFile{path: p, save: ps}
+	}
+}
+
+// --- players --------------------------------------------------------------
+
+// PlayerInfo is one row of the player picker.
+type PlayerInfo struct {
+	UID       string `json:"uid"`
+	Name      string `json:"name"`
+	Level     int    `json:"level"`
+	PalCount  int    `json:"palCount"`
+	HasSave   bool   `json:"hasSave"`
+	ItemCount int    `json:"itemCount"`
+}
+
+// Players lists everyone in the save.
+func (a *App) Players() ([]PlayerInfo, error) {
+	if a.world == nil {
+		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	var out []PlayerInfo
+	for _, c := range a.world.Players() {
+		uid := c.PlayerUID.String()
+		name := c.Pal.Nickname()
+		if name == "" {
+			name = "(이름 없음)"
+		}
+		pi := PlayerInfo{
+			UID:      uid,
+			Name:     name,
+			Level:    c.Pal.Level(),
+			PalCount: len(a.world.PalsOwnedBy(c.PlayerUID)),
+		}
+		if pf, ok := a.players[uid]; ok {
+			pi.HasSave = true
+			if cid, ok := pf.save.InventoryContainer(palsave.ContainerCommon); ok {
+				pi.ItemCount = len(a.world.ContainerContents(cid))
+			}
+		}
+		out = append(out, pi)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].PalCount > out[j].PalCount })
+	return out, nil
+}
+
+// --- pals -----------------------------------------------------------------
+
+// PalInfo is one pal as the UI shows it.
+type PalInfo struct {
+	InstanceID string `json:"instanceId"`
+	SpeciesID  string `json:"speciesId"`
+	Name       string `json:"name"`
+	Nickname   string `json:"nickname"`
+	IsBoss     bool   `json:"isBoss"`
+	Icon       string `json:"icon"`
+
+	Level int   `json:"level"`
+	Exp   int64 `json:"exp"`
+	Rank  int   `json:"rank"`
+
+	TalentHP      int `json:"talentHp"`
+	TalentMelee   int `json:"talentMelee"`
+	TalentShot    int `json:"talentShot"`
+	TalentDefense int `json:"talentDefense"`
+
+	Passives []string `json:"passives"`
+}
+
+// Pals lists the pals belonging to a player.
+func (a *App) Pals(uid string) ([]PalInfo, error) {
+	if a.world == nil {
+		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	owner, err := gvas.ParseGUID(uid)
+	if err != nil {
+		return nil, fmt.Errorf("잘못된 UID: %w", err)
+	}
+
+	owned := a.world.PalsOwnedBy(owner)
+	out := make([]PalInfo, 0, len(owned))
+	for _, c := range owned {
+		p := c.Pal
+		species := p.Species()
+
+		info := PalInfo{
+			InstanceID:    c.InstanceID.String(),
+			SpeciesID:     species,
+			Nickname:      p.Nickname(),
+			IsBoss:        p.IsBoss(),
+			Level:         p.Level(),
+			Exp:           p.Exp(),
+			Rank:          p.Rank(),
+			TalentHP:      p.Talent(palsave.TalentHP),
+			TalentMelee:   p.Talent(palsave.TalentMelee),
+			TalentShot:    p.Talent(palsave.TalentShot),
+			TalentDefense: p.Talent(palsave.TalentDefense),
+			Passives:      p.Passives(),
+			Name:          species,
+		}
+		if ko, ok := paldata.PalName(species); ok {
+			info.Name = ko
+		}
+		info.Icon = palIcon(species)
+		out = append(out, info)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Level > out[j].Level
+	})
+	return out, nil
+}
+
+// SpeciesSummary groups a player's pals by species, which is how bulk edits
+// are chosen.
+type SpeciesSummary struct {
+	SpeciesID string `json:"speciesId"`
+	Name      string `json:"name"`
+	Icon      string `json:"icon"`
+	Count     int    `json:"count"`
+	MinLevel  int    `json:"minLevel"`
+	MaxLevel  int    `json:"maxLevel"`
+}
+
+// PalSpecies summarises a player's pals per species.
+func (a *App) PalSpecies(uid string) ([]SpeciesSummary, error) {
+	pals, err := a.Pals(uid)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[string]*SpeciesSummary{}
+	for _, p := range pals {
+		s, ok := byID[p.SpeciesID]
+		if !ok {
+			s = &SpeciesSummary{
+				SpeciesID: p.SpeciesID,
+				Name:      p.Name,
+				Icon:      p.Icon,
+				MinLevel:  p.Level,
+				MaxLevel:  p.Level,
+			}
+			byID[p.SpeciesID] = s
+		}
+		s.Count++
+		if p.Level < s.MinLevel {
+			s.MinLevel = p.Level
+		}
+		if p.Level > s.MaxLevel {
+			s.MaxLevel = p.Level
+		}
+	}
+
+	out := make([]SpeciesSummary, 0, len(byID))
+	for _, s := range byID {
+		out = append(out, *s)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out, nil
+}
+
+// SetPalLevel changes one pal's level, keeping experience consistent.
+func (a *App) SetPalLevel(instanceID string, level int) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	exp, ok := palsave.TotalPalExpForLevel(level)
+	if !ok {
+		return fmt.Errorf("레벨 %d 에 해당하는 경험치가 없습니다 (1-%d)", level, palsave.MaxKnownLevel)
+	}
+	return p.SetLevelWithExp(level, exp)
+}
+
+// SetPalLevelBulk applies a level to every pal of a species owned by a player,
+// returning how many changed.
+func (a *App) SetPalLevelBulk(uid, speciesID string, level int) (int, error) {
+	if a.world == nil {
+		return 0, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	owner, err := gvas.ParseGUID(uid)
+	if err != nil {
+		return 0, err
+	}
+	exp, ok := palsave.TotalPalExpForLevel(level)
+	if !ok {
+		return 0, fmt.Errorf("레벨 %d 에 해당하는 경험치가 없습니다 (1-%d)", level, palsave.MaxKnownLevel)
+	}
+
+	n := 0
+	for _, c := range a.world.PalsOwnedBy(owner) {
+		if !strings.EqualFold(c.Pal.Species(), speciesID) {
+			continue
+		}
+		if err := c.Pal.SetLevelWithExp(level, exp); err != nil {
+			return n, err
+		}
+		n++
+	}
+	if n == 0 {
+		return 0, fmt.Errorf("%s 종족의 팰이 없습니다", speciesID)
+	}
+	return n, nil
+}
+
+// SetPalRank sets a pal's condense rank.
+func (a *App) SetPalRank(instanceID string, rank int) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	return p.SetRank(rank)
+}
+
+// SetPalTalent sets one IV. Name must be a Talent_* property name.
+func (a *App) SetPalTalent(instanceID, name string, value int) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	return p.SetTalent(name, value)
+}
+
+// palIcon picks the best available artwork for a species, or "" for none.
+//
+// The paldeck menu icon comes first because it covers every real pal, while
+// the full-body art is missing for a handful — raid-boss body parts that never
+// reach a palbox, but the fallback costs nothing. Both are sized for a small
+// square, which is what the UI draws.
+func palIcon(species string) string {
+	if f, ok := paldata.PalMenuIcon(species); ok && icons.Has(f) {
+		return f
+	}
+	if f, ok := paldata.PalIcon(species); ok && icons.Has(f) {
+		return f
+	}
+	return ""
+}
+
+func (a *App) findPal(instanceID string) (*palsave.Pal, error) {
+	if a.world == nil {
+		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	id, err := gvas.ParseGUID(instanceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range a.world.Chars() {
+		if c.InstanceID == id {
+			return c.Pal, nil
+		}
+	}
+	return nil, fmt.Errorf("팰을 찾을 수 없습니다: %s", instanceID)
+}
+
+// --- inventory ------------------------------------------------------------
+
+// ItemInfo is one inventory stack as the UI shows it.
+type ItemInfo struct {
+	Slot   int32  `json:"slot"`
+	ItemID string `json:"itemId"`
+	Name   string `json:"name"`
+	Count  int32  `json:"count"`
+	Icon   string `json:"icon"`
+}
+
+// Inventory returns a player's main inventory.
+func (a *App) Inventory(uid string) ([]ItemInfo, error) {
+	cid, err := a.commonContainer(uid)
+	if err != nil {
+		return nil, err
+	}
+
+	stacks := a.world.ContainerContents(cid)
+	out := make([]ItemInfo, 0, len(stacks))
+	for _, s := range stacks {
+		ii := ItemInfo{Slot: s.Index, ItemID: s.ItemID, Count: s.Count, Name: s.ItemID}
+		if ko, ok := paldata.ItemName(s.ItemID); ok {
+			ii.Name = ko
+		}
+		if icon, ok := paldata.ItemIcon(s.ItemID); ok && icons.Has(icon) {
+			ii.Icon = icon
+		}
+		out = append(out, ii)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Slot < out[j].Slot })
+	return out, nil
+}
+
+// SetItemCount sets an existing stack to an exact count.
+func (a *App) SetItemCount(uid, itemID string, count int) error {
+	cid, err := a.commonContainer(uid)
+	if err != nil {
+		return err
+	}
+	_, err = a.world.SetItemCount(cid, itemID, int32(count))
+	return err
+}
+
+// GiveItem adds items, materialising a slot when none is free.
+func (a *App) GiveItem(uid, itemID string, count int) (int32, error) {
+	cid, err := a.commonContainer(uid)
+	if err != nil {
+		return 0, err
+	}
+	return a.world.GiveItem(cid, itemID, int32(count))
+}
+
+func (a *App) commonContainer(uid string) (gvas.GUID, error) {
+	if a.world == nil {
+		return gvas.GUID{}, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	pf, ok := a.players[uid]
+	if !ok {
+		return gvas.GUID{}, fmt.Errorf("이 플레이어의 세이브 파일이 없습니다 (Players 폴더 확인)")
+	}
+	cid, ok := pf.save.InventoryContainer(palsave.ContainerCommon)
+	if !ok {
+		return gvas.GUID{}, fmt.Errorf("인벤토리 컨테이너를 찾을 수 없습니다")
+	}
+	return cid, nil
+}
+
+// --- search ---------------------------------------------------------------
+
+// ItemChoice is a searchable item, for the "give item" picker.
+type ItemChoice struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+}
+
+// SearchItems finds items by id or Korean name.
+func (a *App) SearchItems(q string) []ItemChoice {
+	found := paldata.SearchItems(q)
+	if len(found) > 50 {
+		found = found[:50]
+	}
+	out := make([]ItemChoice, 0, len(found))
+	for _, it := range found {
+		c := ItemChoice{ID: it.ID, Name: it.ID}
+		if ko, ok := paldata.ItemName(it.ID); ok {
+			c.Name = ko
+		}
+		if icon, ok := paldata.ItemIcon(it.ID); ok && icons.Has(icon) {
+			c.Icon = icon
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// --- saving ---------------------------------------------------------------
+
+// SaveResult reports what was written.
+type SaveResult struct {
+	BackupPath string `json:"backupPath"`
+	SizeBytes  int    `json:"sizeBytes"`
+}
+
+// SaveToDisk writes the world back, taking a timestamped backup first.
+//
+// The backup is not optional and not configurable. A save holds other players'
+// characters too, and a bad write costs them their progress as well.
+func (a *App) SaveToDisk() (*SaveResult, error) {
+	if a.world == nil {
+		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	if err := a.world.Flush(); err != nil {
+		return nil, err
+	}
+	raw, err := gvas.Encode(a.file)
+	if err != nil {
+		return nil, fmt.Errorf("인코드 실패: %w", err)
+	}
+	packed, err := oodle.CompressSav(raw, a.saveType)
+	if err != nil {
+		return nil, fmt.Errorf("압축 실패: %w", err)
+	}
+
+	orig, err := os.ReadFile(a.levelPath)
+	if err != nil {
+		return nil, err
+	}
+	backup := fmt.Sprintf("%s.%s.bak", a.levelPath, time.Now().Format("20060102-150405"))
+	if err := os.WriteFile(backup, orig, 0o644); err != nil {
+		return nil, fmt.Errorf("백업 실패: %w", err)
+	}
+	if err := os.WriteFile(a.levelPath, packed, 0o644); err != nil {
+		return nil, err
+	}
+	return &SaveResult{BackupPath: filepath.Base(backup), SizeBytes: len(packed)}, nil
 }

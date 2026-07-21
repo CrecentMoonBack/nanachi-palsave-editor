@@ -18,3 +18,7 @@ third_party/oodle/oo2core*.dll
 third_party/oodle/ooz-zao/
 third_party/oodle/ooz/
 third_party/oodle/*.dll
+
+# Pal and item artwork is Pocketpair's and is never committed. Fetch it onto
+# your own machine with scripts/fetch-icons.sh; the editor runs fine without it.
+assets/icons/

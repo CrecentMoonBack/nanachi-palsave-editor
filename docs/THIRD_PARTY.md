@@ -64,6 +64,41 @@ rules out for good reason.
 *filenames* only; the `.webp` files themselves live in `assets/icons/` beside
 the executable and the GUI falls back to text names when they are absent.
 
+## Artwork (`assets/icons/`) — fetched, never shipped
+
+The pal and item images are Palworld's own UI textures, extracted from the
+game. Pocketpair owns them and has licensed them to nobody. Unlike the id
+tables above there is no "these are facts about the game" argument to make: an
+icon is the artwork itself, so the repository ships none of it, ever.
+
+What ships is the machinery:
+
+- `internal/paldata` maps an id to an icon *filename* — see `PalIcon`,
+  `PalMenuIcon`, `ItemIcon`.
+- `internal/icons` locates `assets/icons/` (beside the executable first, then
+  the working tree, the same search order `internal/oodle` uses for its DLL)
+  and serves it to the frontend over `/icons/`.
+- `scripts/fetch-icons.sh` puts the files there, on the user's machine.
+- `.gitignore` has `assets/icons/`, so a populated folder cannot be committed
+  by accident.
+
+Every one of those degrades cleanly: with no artwork, `icons.Available()` is
+false, requests 404, and the GUI shows Korean names. **The editor is fully
+usable with no images at all** — this is a display nicety, not a dependency.
+
+The script copies from a palworld-save-pal working copy
+(<https://github.com/oMaN-Rod/palworld-save-pal>, `ui/src/lib/assets/img/`),
+which is the same upstream the id tables came from. It is a checkout we already
+have, over SSH, one file at a time — not a scraper against a fan site.
+`CLAUDE.md` rules that out for two good reasons: it puts our load on someone
+who never agreed to it, and it breaks the moment they change their markup.
+
+About the set: ~2462 files, ~34 MB, all lowercase `.webp`, flat. Two outliers
+are not icons at all — `t_worldmap.webp` (2.5 MB) and `t_treemap.webp` (3.4 MB)
+are full-screen textures that happen to live in the same folder, and together
+are ~17% of the download. The script skips upstream's `img/app/` subfolder,
+which is that project's own branding rather than game content.
+
 ## Building the native codec
 
 ```sh
