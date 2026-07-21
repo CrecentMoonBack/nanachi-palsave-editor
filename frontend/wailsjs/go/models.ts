@@ -36,6 +36,28 @@ export namespace main {
 	        this.icon = source["icon"];
 	    }
 	}
+	export class PassiveInfo {
+	    id: string;
+	    name: string;
+	    nameEn: string;
+	    desc: string;
+	    rank: number;
+	    known: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PassiveInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.nameEn = source["nameEn"];
+	        this.desc = source["desc"];
+	        this.rank = source["rank"];
+	        this.known = source["known"];
+	    }
+	}
 	export class PalInfo {
 	    instanceId: string;
 	    speciesId: string;
@@ -50,7 +72,11 @@ export namespace main {
 	    talentMelee: number;
 	    talentShot: number;
 	    talentDefense: number;
-	    passives: string[];
+	    soulAttack: number;
+	    soulDefence: number;
+	    soulCraftSpeed: number;
+	    soulHp: number;
+	    passives: PassiveInfo[];
 	
 	    static createFrom(source: any = {}) {
 	        return new PalInfo(source);
@@ -71,9 +97,32 @@ export namespace main {
 	        this.talentMelee = source["talentMelee"];
 	        this.talentShot = source["talentShot"];
 	        this.talentDefense = source["talentDefense"];
-	        this.passives = source["passives"];
+	        this.soulAttack = source["soulAttack"];
+	        this.soulDefence = source["soulDefence"];
+	        this.soulCraftSpeed = source["soulCraftSpeed"];
+	        this.soulHp = source["soulHp"];
+	        this.passives = this.convertValues(source["passives"], PassiveInfo);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
+	
 	export class PlayerInfo {
 	    uid: string;
 	    name: string;
@@ -165,6 +214,11 @@ export namespace main {
 	    iconCount: number;
 	    saveOpen: boolean;
 	    savePath: string;
+	    maxPassives: number;
+	    maxLevel: number;
+	    maxRank: number;
+	    maxTalent: number;
+	    maxRankBonus: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -178,6 +232,11 @@ export namespace main {
 	        this.iconCount = source["iconCount"];
 	        this.saveOpen = source["saveOpen"];
 	        this.savePath = source["savePath"];
+	        this.maxPassives = source["maxPassives"];
+	        this.maxLevel = source["maxLevel"];
+	        this.maxRank = source["maxRank"];
+	        this.maxTalent = source["maxTalent"];
+	        this.maxRankBonus = source["maxRankBonus"];
 	    }
 	}
 

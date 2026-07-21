@@ -20,13 +20,19 @@ export function SaveToDisk():Promise<main.SaveResult>;
 
 export function SearchItems(arg1:string):Promise<Array<main.ItemChoice>>;
 
+export function SearchPassives(arg1:string):Promise<Array<main.PassiveInfo>>;
+
 export function SetItemCount(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function SetPalLevel(arg1:string,arg2:number):Promise<void>;
 
 export function SetPalLevelBulk(arg1:string,arg2:string,arg3:number):Promise<number>;
 
+export function SetPalPassives(arg1:string,arg2:Array<string>):Promise<void>;
+
 export function SetPalRank(arg1:string,arg2:number):Promise<void>;
+
+export function SetPalRankBonus(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function SetPalTalent(arg1:string,arg2:string,arg3:number):Promise<void>;
 

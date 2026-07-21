@@ -50,6 +50,13 @@ func (a *App) startup(ctx context.Context) {
 
 // --- status ---------------------------------------------------------------
 
+// MaxPassives is how many passive skills one pal may carry.
+//
+// Four is the game's own limit, and the live server save agrees: of 1663 pals
+// not one holds a fifth. The UI reads it from Status rather than hardcoding a
+// 4 of its own, so the cap has exactly one definition.
+const MaxPassives = 4
+
 // Status describes what the app can currently do, for the opening screen.
 type Status struct {
 	CodecOK    bool   `json:"codecOk"`
@@ -58,14 +65,27 @@ type Status struct {
 	IconCount  int    `json:"iconCount"`
 	SaveOpen   bool   `json:"saveOpen"`
 	SavePath   string `json:"savePath"`
+
+	// Editing bounds, so the UI clamps to the same numbers the setters
+	// enforce instead of keeping its own copy of each limit.
+	MaxPassives  int `json:"maxPassives"`
+	MaxLevel     int `json:"maxLevel"`
+	MaxRank      int `json:"maxRank"`
+	MaxTalent    int `json:"maxTalent"`
+	MaxRankBonus int `json:"maxRankBonus"`
 }
 
 func (a *App) Status() Status {
 	s := Status{
-		IconsOK:   icons.Available(),
-		IconCount: icons.Count(),
-		SaveOpen:  a.world != nil,
-		SavePath:  a.levelPath,
+		IconsOK:     icons.Available(),
+		IconCount:   icons.Count(),
+		SaveOpen:    a.world != nil,
+		SavePath:    a.levelPath,
+		MaxPassives:  MaxPassives,
+		MaxLevel:     palsave.MaxKnownLevel,
+		MaxRank:      palsave.MaxRank,
+		MaxTalent:    palsave.MaxTalent,
+		MaxRankBonus: palsave.MaxRankBonus,
 	}
 	if err := oodle.Available(); err != nil {
 		s.CodecError = err.Error()
@@ -256,7 +276,50 @@ type PalInfo struct {
 	TalentShot    int `json:"talentShot"`
 	TalentDefense int `json:"talentDefense"`
 
-	Passives []string `json:"passives"`
+	// Souls spent per stat, 0..MaxRankBonus. Separate from Rank, which is the
+	// condense level: a pal can be fully condensed with no souls spent.
+	SoulAttack     int `json:"soulAttack"`
+	SoulDefence    int `json:"soulDefence"`
+	SoulCraftSpeed int `json:"soulCraftSpeed"`
+	SoulHP         int `json:"soulHp"`
+
+	Passives []PassiveInfo `json:"passives"`
+}
+
+// PassiveInfo is one passive skill as the UI shows it, in the pal list and in
+// the picker both.
+type PassiveInfo struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	NameEN string `json:"nameEn"`
+	Desc   string `json:"desc"`
+	Rank   int    `json:"rank"`
+
+	// Known is false for an id held by a pal that the reference table has no
+	// entry for — a game update adding traits, or a save edited by another
+	// tool. The UI shows the raw id rather than hiding the trait, because
+	// dropping it silently would lose it on the next write.
+	Known bool `json:"known"`
+}
+
+// describePassive renders one id for display, falling back to the raw id.
+func describePassive(id string) PassiveInfo {
+	p, ok := paldata.LookupPassive(id)
+	if !ok {
+		return PassiveInfo{ID: id, Name: id}
+	}
+	name := p.NameKO
+	if name == "" {
+		name = id
+	}
+	return PassiveInfo{
+		ID:     id,
+		Name:   name,
+		NameEN: p.NameEN,
+		Desc:   p.DescKO,
+		Rank:   p.Rank,
+		Known:  true,
+	}
 }
 
 // Pals lists the pals belonging to a player.
@@ -287,8 +350,16 @@ func (a *App) Pals(uid string) ([]PalInfo, error) {
 			TalentMelee:   p.Talent(palsave.TalentMelee),
 			TalentShot:    p.Talent(palsave.TalentShot),
 			TalentDefense: p.Talent(palsave.TalentDefense),
-			Passives:      p.Passives(),
-			Name:          species,
+
+			SoulAttack:     p.RankBonus(palsave.RankAttack),
+			SoulDefence:    p.RankBonus(palsave.RankDefence),
+			SoulCraftSpeed: p.RankBonus(palsave.RankCraftSpeed),
+			SoulHP:         p.RankBonus(palsave.RankHP),
+
+			Name: species,
+		}
+		for _, id := range p.Passives() {
+			info.Passives = append(info.Passives, describePassive(id))
 		}
 		if ko, ok := paldata.PalName(species); ok {
 			info.Name = ko
@@ -417,21 +488,107 @@ func (a *App) SetPalTalent(instanceID, name string, value int) error {
 	if err != nil {
 		return err
 	}
+	if !allowedTalent[name] {
+		return fmt.Errorf("알 수 없는 능력치입니다: %s", name)
+	}
 	return p.SetTalent(name, value)
+}
+
+// SetPalRankBonus spends pal souls on one stat. Name must be a Rank_* name.
+func (a *App) SetPalRankBonus(instanceID, name string, value int) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	if !allowedRankBonus[name] {
+		return fmt.Errorf("알 수 없는 강화 항목입니다: %s", name)
+	}
+	return p.SetRankBonus(name, value)
+}
+
+// The property names the UI may write. Both setters take a name straight from
+// the frontend and hand it to a generic raw-byte write, so an unchecked name
+// would let a typo create a junk property on the pal rather than fail.
+var (
+	allowedTalent = map[string]bool{
+		palsave.TalentHP:      true,
+		palsave.TalentMelee:   true,
+		palsave.TalentShot:    true,
+		palsave.TalentDefense: true,
+	}
+	allowedRankBonus = map[string]bool{
+		palsave.RankAttack:     true,
+		palsave.RankDefence:    true,
+		palsave.RankCraftSpeed: true,
+		palsave.RankHP:         true,
+	}
+)
+
+// SetPalPassives replaces a pal's passive skill list.
+//
+// Validated here rather than in palsave, which is the save codec and has no
+// reference table to check against. Unknown ids are refused instead of being
+// written through: the game drops a trait it does not recognise, so a typo
+// would look like it worked and quietly cost the pal a slot.
+func (a *App) SetPalPassives(instanceID string, ids []string) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	if err := validatePassives(ids); err != nil {
+		return err
+	}
+	return p.SetPassives(ids)
+}
+
+// validatePassives is the whole rule set for a passive list, kept separate
+// from the binding so it can be exercised without a save on disk.
+func validatePassives(ids []string) error {
+	if len(ids) > MaxPassives {
+		return fmt.Errorf("패시브는 최대 %d개까지입니다 (%d개 요청)", MaxPassives, len(ids))
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			return fmt.Errorf("패시브가 중복됩니다: %s", passiveLabel(id))
+		}
+		seen[id] = true
+		if _, ok := paldata.LookupPassive(id); !ok {
+			return fmt.Errorf("알 수 없는 패시브입니다: %s", id)
+		}
+	}
+	return nil
+}
+
+// passiveLabel names a passive for an error message, Korean when known.
+func passiveLabel(id string) string {
+	if name, ok := paldata.PassiveName(id); ok {
+		return name
+	}
+	return id
+}
+
+// SearchPassives finds passives by id, Korean name or English name, for the
+// picker. An empty query returns the whole table, best tier first.
+func (a *App) SearchPassives(q string) []PassiveInfo {
+	found := paldata.SearchPassives(q)
+	out := make([]PassiveInfo, 0, len(found))
+	for _, p := range found {
+		out = append(out, describePassive(p.ID))
+	}
+	return out
 }
 
 // palIcon picks the best available artwork for a species, or "" for none.
 //
-// The paldeck menu icon comes first because it covers every real pal, while
-// the full-body art is missing for a handful — raid-boss body parts that never
-// reach a palbox, but the fallback costs nothing. Both are sized for a small
-// square, which is what the UI draws.
+// paldata decides the preference order and this only asks which of its
+// candidates is actually on disk — the two questions are separate because
+// artwork is optional and supplied by the user.
 func palIcon(species string) string {
-	if f, ok := paldata.PalMenuIcon(species); ok && icons.Has(f) {
-		return f
-	}
-	if f, ok := paldata.PalIcon(species); ok && icons.Has(f) {
-		return f
+	for _, f := range paldata.PalIconCandidates(species) {
+		if icons.Has(f) {
+			return f
+		}
 	}
 	return ""
 }

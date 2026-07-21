@@ -38,6 +38,10 @@ export function SearchItems(arg1) {
   return window['go']['main']['App']['SearchItems'](arg1);
 }
 
+export function SearchPassives(arg1) {
+  return window['go']['main']['App']['SearchPassives'](arg1);
+}
+
 export function SetItemCount(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetItemCount'](arg1, arg2, arg3);
 }
@@ -50,8 +54,16 @@ export function SetPalLevelBulk(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetPalLevelBulk'](arg1, arg2, arg3);
 }
 
+export function SetPalPassives(arg1, arg2) {
+  return window['go']['main']['App']['SetPalPassives'](arg1, arg2);
+}
+
 export function SetPalRank(arg1, arg2) {
   return window['go']['main']['App']['SetPalRank'](arg1, arg2);
+}
+
+export function SetPalRankBonus(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetPalRankBonus'](arg1, arg2, arg3);
 }
 
 export function SetPalTalent(arg1, arg2, arg3) {
