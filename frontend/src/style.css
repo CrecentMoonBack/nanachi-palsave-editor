@@ -364,3 +364,217 @@ button.card:hover {
   color: var(--accent);
   font-size: 12px;
 }
+
+/* --- per-pal editing ---------------------------------------------------- */
+
+/* The species grid keeps its own scroll so the editor beside it stays put
+   while a long roster is browsed. */
+.split {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  min-height: 0;
+}
+.split > .grid {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail {
+  width: 400px;
+  flex: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 190px);
+  overflow-y: auto;
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.detail-title {
+  font-weight: 600;
+  flex: 1;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--muted);
+  padding: 3px 9px;
+  font-size: 12px;
+}
+button.ghost:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.pal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+.pal-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  text-align: left;
+  padding: 6px 9px;
+  background: var(--panel-2);
+  font-size: 12px;
+}
+.pal-row.active {
+  border-color: var(--accent);
+}
+.pal-row .lv {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.pal-row .rank {
+  color: var(--accent-dim);
+  flex: none;
+  letter-spacing: -1px;
+}
+.pal-row .passives {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor {
+  border-top: 1px solid var(--line);
+  padding-top: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.editor-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.editor-head .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.field-row input {
+  width: 72px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.group-title {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  justify-content: space-between;
+}
+.stat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.stat input {
+  width: 68px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 26px;
+  align-items: center;
+}
+.chip {
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  white-space: nowrap;
+}
+.chip .x {
+  color: var(--muted);
+  margin-left: 2px;
+}
+/* Tiers borrow the game's own colouring: the good ones warm, the
+   detrimental ones red, so a bad trait is obvious without reading it. */
+.chip.rank4,
+.chip.rank5 {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chip.rank3 {
+  border-color: var(--accent-dim);
+}
+.chip.rankneg {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 210px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px;
+}
+.result {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 4px;
+}
+.result:hover {
+  background: var(--panel-2);
+}
+.result .desc {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+button.apply {
+  width: 100%;
+}

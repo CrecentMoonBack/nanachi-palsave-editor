@@ -10,13 +10,38 @@ import {
   Players,
   SaveToDisk,
   SearchItems,
+  SearchPassives,
   SetItemCount,
+  SetPalLevel,
   SetPalLevelBulk,
+  SetPalPassives,
+  SetPalRank,
+  SetPalRankBonus,
+  SetPalTalent,
   Status,
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
 
 type Tab = "pals" | "items";
+
+/**
+ * The save property names behind each editable stat, paired with the label to
+ * show. They are the game's own names and the Go side allow-lists them, so a
+ * typo here fails loudly on apply rather than writing a junk property.
+ */
+const TALENTS = [
+  { prop: "Talent_HP", label: "체력" },
+  { prop: "Talent_Melee", label: "근접" },
+  { prop: "Talent_Shot", label: "원거리" },
+  { prop: "Talent_Defense", label: "방어" },
+] as const;
+
+const SOULS = [
+  { prop: "Rank_HP", label: "체력", field: "soulHp" },
+  { prop: "Rank_Attack", label: "공격", field: "soulAttack" },
+  { prop: "Rank_Defence", label: "방어", field: "soulDefence" },
+  { prop: "Rank_CraftSpeed", label: "작업속도", field: "soulCraftSpeed" },
+] as const;
 
 /** Icons are optional: the folder may be absent, so every image falls back. */
 function Icon({ file, alt }: { file: string; alt: string }) {
@@ -186,6 +211,7 @@ export default function App() {
                   <PalsTab
                     uid={uid}
                     species={species}
+                    status={status}
                     busy={busy}
                     setBusy={setBusy}
                     say={say}
@@ -265,6 +291,7 @@ function Welcome({
 function PalsTab({
   uid,
   species,
+  status,
   busy,
   setBusy,
   say,
@@ -272,6 +299,7 @@ function PalsTab({
 }: {
   uid: string;
   species: main.SpeciesSummary[];
+  status: main.Status | null;
   busy: boolean;
   setBusy: (b: boolean) => void;
   say: (m: string, bad?: boolean) => void;
@@ -279,8 +307,40 @@ function PalsTab({
 }) {
   const [pick, setPick] = useState("");
   const [level, setLevel] = useState(50);
+  const [roster, setRoster] = useState<main.PalInfo[]>([]);
+  const [editing, setEditing] = useState("");
+
+  // The whole roster is fetched once per player and filtered here. It is a few
+  // hundred entries held in memory on the Go side, so paging it per species
+  // would cost a round trip to save nothing.
+  const loadRoster = useCallback(async () => {
+    if (!uid) {
+      setRoster([]);
+      return;
+    }
+    try {
+      setRoster(await Pals(uid));
+    } catch (e: any) {
+      say(String(e), true);
+    }
+  }, [uid, say]);
+
+  useEffect(() => {
+    setPick("");
+    setEditing("");
+    loadRoster();
+  }, [loadRoster]);
 
   const target = species.find((s) => s.speciesId === pick);
+  const members = pick ? roster.filter((p) => p.speciesId === pick) : [];
+  const current = roster.find((p) => p.instanceId === editing) ?? null;
+
+  // Every edit path refreshes both views: the species grid summarises levels,
+  // so a single pal's change has to show up there too.
+  const afterEdit = useCallback(async () => {
+    await onChanged();
+    await loadRoster();
+  }, [onChanged, loadRoster]);
 
   async function apply() {
     if (!pick) return;
@@ -288,7 +348,7 @@ function PalsTab({
     try {
       const n = await SetPalLevelBulk(uid, pick, level);
       say(`${target?.name ?? pick} ${n}마리를 Lv${level} 로 변경`);
-      await onChanged();
+      await afterEdit();
     } catch (e: any) {
       say(String(e), true);
     } finally {
@@ -300,7 +360,13 @@ function PalsTab({
     <>
       <div className="toolbar">
         <label>종족</label>
-        <select value={pick} onChange={(e) => setPick(e.target.value)}>
+        <select
+          value={pick}
+          onChange={(e) => {
+            setPick(e.target.value);
+            setEditing("");
+          }}
+        >
           <option value="">선택…</option>
           {species.map((s) => (
             <option key={s.speciesId} value={s.speciesId}>
@@ -312,7 +378,7 @@ function PalsTab({
         <input
           type="number"
           min={1}
-          max={100}
+          max={status?.maxLevel ?? 100}
           value={level}
           onChange={(e) => setLevel(Number(e.target.value))}
         />
@@ -325,28 +391,330 @@ function PalsTab({
       {species.length === 0 ? (
         <div className="empty">이 플레이어는 팰이 없습니다.</div>
       ) : (
-        <div className="grid">
-          {species.map((s) => (
-            <button
-              key={s.speciesId}
-              className={`card ${s.speciesId === pick ? "active" : ""}`}
-              onClick={() => setPick(s.speciesId)}
-            >
-              <Icon file={s.icon} alt={s.name} />
-              <div className="info">
-                <div className="title">{s.name}</div>
-                <div className="sub">
-                  {s.count}마리 · Lv{" "}
-                  {s.minLevel === s.maxLevel
-                    ? s.minLevel
-                    : `${s.minLevel}–${s.maxLevel}`}
+        <div className="split">
+          <div className="grid">
+            {species.map((s) => (
+              <button
+                key={s.speciesId}
+                className={`card ${s.speciesId === pick ? "active" : ""}`}
+                onClick={() => {
+                  setPick(s.speciesId);
+                  setEditing("");
+                }}
+              >
+                <Icon file={s.icon} alt={s.name} />
+                <div className="info">
+                  <div className="title">{s.name}</div>
+                  <div className="sub">
+                    {s.count}마리 · Lv{" "}
+                    {s.minLevel === s.maxLevel
+                      ? s.minLevel
+                      : `${s.minLevel}–${s.maxLevel}`}
+                  </div>
                 </div>
+              </button>
+            ))}
+          </div>
+
+          {pick && (
+            <aside className="detail">
+              <div className="detail-head">
+                <span className="detail-title">
+                  {target?.name ?? pick} · {members.length}마리
+                </span>
+                <button className="ghost" onClick={() => setPick("")}>
+                  닫기
+                </button>
               </div>
+
+              <div className="pal-list">
+                {members.map((p) => (
+                  <button
+                    key={p.instanceId}
+                    className={`pal-row ${
+                      p.instanceId === editing ? "active" : ""
+                    }`}
+                    onClick={() =>
+                      setEditing(p.instanceId === editing ? "" : p.instanceId)
+                    }
+                  >
+                    <span className="lv">Lv{p.level}</span>
+                    <span className="rank">{"★".repeat(p.rank)}</span>
+                    <span className="passives">
+                      {p.passives.length
+                        ? p.passives.map((x) => x.name).join(" · ")
+                        : "—"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {current && (
+                <PalEditor
+                  key={current.instanceId}
+                  pal={current}
+                  status={status}
+                  busy={busy}
+                  setBusy={setBusy}
+                  say={say}
+                  onChanged={afterEdit}
+                />
+              )}
+            </aside>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Edits one pal. Values are held locally and written on 적용 rather than on
+ * every keystroke, so a half-typed number never reaches the save.
+ */
+function PalEditor({
+  pal,
+  status,
+  busy,
+  setBusy,
+  say,
+  onChanged,
+}: {
+  pal: main.PalInfo;
+  status: main.Status | null;
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  say: (m: string, bad?: boolean) => void;
+  onChanged: () => Promise<void>;
+}) {
+  const maxLevel = status?.maxLevel ?? 100;
+  const maxRank = status?.maxRank ?? 5;
+  const maxTalent = status?.maxTalent ?? 100;
+  const maxSoul = status?.maxRankBonus ?? 10;
+  const maxPassives = status?.maxPassives ?? 4;
+
+  const [level, setLevel] = useState(pal.level);
+  const [rank, setRank] = useState(pal.rank);
+  const [talents, setTalents] = useState<Record<string, number>>({
+    Talent_HP: pal.talentHp,
+    Talent_Melee: pal.talentMelee,
+    Talent_Shot: pal.talentShot,
+    Talent_Defense: pal.talentDefense,
+  });
+  const [souls, setSouls] = useState<Record<string, number>>({
+    Rank_HP: pal.soulHp,
+    Rank_Attack: pal.soulAttack,
+    Rank_Defence: pal.soulDefence,
+    Rank_CraftSpeed: pal.soulCraftSpeed,
+  });
+  const [passives, setPassives] = useState<main.PassiveInfo[]>(pal.passives);
+
+  async function apply() {
+    setBusy(true);
+    try {
+      // Passives first: it is the only call that can reject the whole form,
+      // so failing here leaves nothing half-written.
+      await SetPalPassives(
+        pal.instanceId,
+        passives.map((p) => p.id)
+      );
+      await SetPalLevel(pal.instanceId, level);
+      await SetPalRank(pal.instanceId, rank);
+      for (const t of TALENTS) {
+        await SetPalTalent(pal.instanceId, t.prop, talents[t.prop]);
+      }
+      for (const s of SOULS) {
+        await SetPalRankBonus(pal.instanceId, s.prop, souls[s.prop]);
+      }
+      say(`${pal.name} 수정됨 · Lv${level} · ${rank}농축`);
+      await onChanged();
+    } catch (e: any) {
+      say(String(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function maxAll() {
+    setLevel(maxLevel);
+    setRank(maxRank);
+    setTalents(Object.fromEntries(TALENTS.map((t) => [t.prop, maxTalent])));
+    setSouls(Object.fromEntries(SOULS.map((s) => [s.prop, maxSoul])));
+  }
+
+  return (
+    <div className="editor">
+      <div className="editor-head">
+        <Icon file={pal.icon} alt={pal.name} />
+        <div className="info">
+          <div className="title">{pal.nickname || pal.name}</div>
+          <div className="sub">
+            {pal.name}
+            {pal.isBoss && <span className="badge">알파</span>}
+          </div>
+        </div>
+        <button className="ghost" onClick={maxAll} disabled={busy}>
+          전부 최대
+        </button>
+      </div>
+
+      <div className="field-row">
+        <label>레벨</label>
+        <input
+          type="number"
+          min={1}
+          max={maxLevel}
+          value={level}
+          onChange={(e) => setLevel(Number(e.target.value))}
+        />
+        <label>응축</label>
+        <input
+          type="number"
+          min={1}
+          max={maxRank}
+          value={rank}
+          onChange={(e) => setRank(Number(e.target.value))}
+        />
+      </div>
+
+      <div className="field-group">
+        <div className="group-title">개체값 (0–{maxTalent})</div>
+        <div className="stat-grid">
+          {TALENTS.map((t) => (
+            <label key={t.prop} className="stat">
+              <span>{t.label}</span>
+              <input
+                type="number"
+                min={0}
+                max={maxTalent}
+                value={talents[t.prop]}
+                onChange={(e) =>
+                  setTalents({ ...talents, [t.prop]: Number(e.target.value) })
+                }
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="field-group">
+        <div className="group-title">팰 영혼 (0–{maxSoul}, 단계당 +3%)</div>
+        <div className="stat-grid">
+          {SOULS.map((s) => (
+            <label key={s.prop} className="stat">
+              <span>{s.label}</span>
+              <input
+                type="number"
+                min={0}
+                max={maxSoul}
+                value={souls[s.prop]}
+                onChange={(e) =>
+                  setSouls({ ...souls, [s.prop]: Number(e.target.value) })
+                }
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <PassivePicker
+        chosen={passives}
+        max={maxPassives}
+        onChange={setPassives}
+        say={say}
+      />
+
+      <button className="primary apply" onClick={apply} disabled={busy}>
+        이 팰에 적용
+      </button>
+    </div>
+  );
+}
+
+/** Search-and-pick for a pal's passive skills. */
+function PassivePicker({
+  chosen,
+  max,
+  onChange,
+  say,
+}: {
+  chosen: main.PassiveInfo[];
+  max: number;
+  onChange: (next: main.PassiveInfo[]) => void;
+  say: (m: string, bad?: boolean) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<main.PassiveInfo[]>([]);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    let live = true;
+    SearchPassives(query)
+      .then((r) => live && setResults(r.slice(0, 40)))
+      .catch((e) => live && say(String(e), true));
+    return () => {
+      live = false;
+    };
+  }, [query, say]);
+
+  function add(p: main.PassiveInfo) {
+    if (chosen.some((c) => c.id === p.id)) return;
+    if (chosen.length >= max) {
+      say(`패시브는 최대 ${max}개까지입니다`, true);
+      return;
+    }
+    onChange([...chosen, p]);
+    setQuery("");
+  }
+
+  return (
+    <div className="field-group">
+      <div className="group-title">
+        패시브 ({chosen.length}/{max})
+      </div>
+
+      <div className="chips">
+        {chosen.length === 0 && <span className="muted">없음</span>}
+        {chosen.map((p) => (
+          <button
+            key={p.id}
+            className={`chip rank${p.rank < 0 ? "neg" : p.rank}`}
+            title={p.desc || p.id}
+            onClick={() => onChange(chosen.filter((c) => c.id !== p.id))}
+          >
+            {p.name} <span className="x">×</span>
+          </button>
+        ))}
+      </div>
+
+      <input
+        type="text"
+        placeholder="패시브 검색 (한글/영문)"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+
+      {results.length > 0 && (
+        <div className="results">
+          {results.map((p) => (
+            <button
+              key={p.id}
+              className="result"
+              title={p.desc || p.id}
+              onClick={() => add(p)}
+            >
+              <span className={`chip rank${p.rank < 0 ? "neg" : p.rank}`}>
+                {p.name}
+              </span>
+              <span className="desc">{p.desc}</span>
             </button>
           ))}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
