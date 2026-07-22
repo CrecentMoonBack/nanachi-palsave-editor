@@ -33,6 +33,9 @@ type App struct {
 
 	// players maps a player UID to their decoded Players/<uid>.sav.
 	players map[string]*playerFile
+
+	// presets are the user's saved passive sets, stored outside any save file.
+	presets *presetStore
 }
 
 type playerFile struct {
@@ -41,7 +44,10 @@ type playerFile struct {
 }
 
 func NewApp() *App {
-	return &App{players: map[string]*playerFile{}}
+	return &App{
+		players: map[string]*playerFile{},
+		presets: newPresetStore(),
+	}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -766,6 +772,138 @@ func passiveLabel(id string) string {
 		return name
 	}
 	return id
+}
+
+// --- passive presets ------------------------------------------------------
+
+// PresetInfo is a saved passive set as the UI shows it.
+//
+// Passives carries the resolved entries rather than bare ids so the list can
+// render names and tiers without a second round trip per preset.
+type PresetInfo struct {
+	Name     string        `json:"name"`
+	Passives []PassiveInfo `json:"passives"`
+	// Stale marks a preset holding an id the reference table no longer knows,
+	// which happens after a game update. It is shown rather than hidden, so a
+	// preset that silently stopped working is visible instead of mysterious.
+	Stale bool `json:"stale"`
+}
+
+// Presets lists the saved passive sets, most recently updated first.
+func (a *App) Presets() ([]PresetInfo, error) {
+	list, err := a.presets.all()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PresetInfo, 0, len(list))
+	for _, p := range list {
+		info := PresetInfo{Name: p.Name}
+		for _, id := range p.IDs {
+			d := describePassive(id)
+			if !d.Known {
+				info.Stale = true
+			}
+			info.Passives = append(info.Passives, d)
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+// SavePreset stores a passive set under a name, replacing one of the same name.
+//
+// The ids are validated exactly as an edit would be. A preset is only useful
+// if it can actually be applied, so refusing a bad one at save time beats
+// discovering it later on a pal.
+func (a *App) SavePreset(name string, ids []string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("프리셋 이름을 입력하세요")
+	}
+	if len([]rune(name)) > 40 {
+		return fmt.Errorf("프리셋 이름이 너무 깁니다 (최대 40자)")
+	}
+	if len(ids) == 0 {
+		return fmt.Errorf("패시브를 하나 이상 골라야 합니다")
+	}
+	if err := validatePassives(ids); err != nil {
+		return err
+	}
+	return a.presets.put(name, ids)
+}
+
+// DeletePreset removes a saved set.
+func (a *App) DeletePreset(name string) error {
+	return a.presets.remove(name)
+}
+
+// ApplyPreset writes a preset's passives onto one pal, replacing whatever it
+// had. It returns the resolved list so the editor can show the new state.
+func (a *App) ApplyPreset(instanceID, name string) ([]PassiveInfo, error) {
+	list, err := a.presets.all()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range list {
+		if !strings.EqualFold(p.Name, name) {
+			continue
+		}
+		// Re-validate: the table can change under a preset saved long ago.
+		if err := validatePassives(p.IDs); err != nil {
+			return nil, fmt.Errorf("프리셋 %q 을(를) 쓸 수 없습니다: %w", name, err)
+		}
+		if err := a.SetPalPassives(instanceID, p.IDs); err != nil {
+			return nil, err
+		}
+		out := make([]PassiveInfo, 0, len(p.IDs))
+		for _, id := range p.IDs {
+			out = append(out, describePassive(id))
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("그런 이름의 프리셋이 없습니다: %s", name)
+}
+
+// ApplyPresetToSpecies writes a preset onto every pal of one species owned by
+// a player, returning how many changed.
+//
+// This is the point of presets: the request behind them was that setting a
+// work set on a boxful of pals meant picking four traits over and over.
+func (a *App) ApplyPresetToSpecies(uid, speciesID, name string) (int, error) {
+	if a.world == nil {
+		return 0, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	owner, err := gvas.ParseGUID(uid)
+	if err != nil {
+		return 0, err
+	}
+	list, err := a.presets.all()
+	if err != nil {
+		return 0, err
+	}
+	for _, p := range list {
+		if !strings.EqualFold(p.Name, name) {
+			continue
+		}
+		if err := validatePassives(p.IDs); err != nil {
+			return 0, fmt.Errorf("프리셋 %q 을(를) 쓸 수 없습니다: %w", name, err)
+		}
+		n := 0
+		for _, c := range a.world.PalsOwnedBy(owner) {
+			if !strings.EqualFold(c.Pal.Species(), speciesID) {
+				continue
+			}
+			if err := c.Pal.SetPassives(p.IDs); err != nil {
+				return n, err
+			}
+			n++
+		}
+		if n == 0 {
+			return 0, fmt.Errorf("%s 종족의 팰이 없습니다", speciesID)
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("그런 이름의 프리셋이 없습니다: %s", name)
 }
 
 // SearchPassives finds passives by id, Korean name or English name, for the

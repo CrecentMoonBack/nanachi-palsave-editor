@@ -13,6 +13,9 @@ import {
   SaveToDisk,
   SearchItems,
   SearchPassives,
+  Presets,
+  SavePreset,
+  DeletePreset,
   SetItemCount,
   SetPalLevel,
   SetPalPassives,
@@ -853,6 +856,39 @@ function PassivePicker({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<main.PassiveInfo[]>([]);
+  const [presets, setPresets] = useState<main.PresetInfo[]>([]);
+  const [naming, setNaming] = useState(false);
+  const [presetName, setPresetName] = useState("");
+
+  const reloadPresets = useCallback(() => {
+    Presets()
+      .then(setPresets)
+      .catch((e) => say(String(e), true));
+  }, [say]);
+
+  useEffect(reloadPresets, [reloadPresets]);
+
+  async function store() {
+    try {
+      await SavePreset(presetName, chosen.map((c) => c.id));
+      say(`프리셋 저장됨 · ${presetName}`);
+      setNaming(false);
+      setPresetName("");
+      reloadPresets();
+    } catch (e: any) {
+      say(String(e), true);
+    }
+  }
+
+  async function drop(name: string) {
+    try {
+      await DeletePreset(name);
+      say(`프리셋 삭제됨 · ${name}`);
+      reloadPresets();
+    } catch (e: any) {
+      say(String(e), true);
+    }
+  }
 
   useEffect(() => {
     if (!query.trim()) {
@@ -886,6 +922,66 @@ function PassivePicker({
       <div className="hint">
         칩을 누르면 빠지고, 아래에서 검색해 고르면 추가됩니다. 이름 위에 잠깐
         올려두면 효과 설명이 뜹니다. 빨간 칩은 나쁜 패시브입니다.
+      </div>
+
+      <div className="preset-bar">
+        <span className="preset-label">프리셋</span>
+        {presets.length === 0 && (
+          <span className="muted">저장된 조합 없음</span>
+        )}
+        {presets.map((p) => (
+          <span
+            key={p.name}
+            className={`preset ${p.stale ? "stale" : ""}`}
+            title={
+              (p.stale ? "알 수 없는 패시브가 들어 있습니다 — " : "") +
+              p.passives.map((x) => x.name).join(", ")
+            }
+          >
+            <button className="preset-use" onClick={() => onChange(p.passives)}>
+              {p.name}
+            </button>
+            <button
+              className="preset-del"
+              title="프리셋 삭제"
+              onClick={() => drop(p.name)}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {naming ? (
+          <span className="preset-new">
+            <input
+              type="text"
+              autoFocus
+              placeholder="이름"
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") store();
+                if (e.key === "Escape") setNaming(false);
+              }}
+            />
+            <button onClick={store}>저장</button>
+            <button className="ghost" onClick={() => setNaming(false)}>
+              취소
+            </button>
+          </span>
+        ) : (
+          <button
+            className="ghost preset-add"
+            disabled={chosen.length === 0}
+            title={
+              chosen.length === 0
+                ? "패시브를 고른 뒤 저장할 수 있습니다"
+                : "지금 고른 조합을 프리셋으로 저장"
+            }
+            onClick={() => setNaming(true)}
+          >
+            + 현재 조합 저장
+          </button>
+        )}
       </div>
 
       <div className="chips">

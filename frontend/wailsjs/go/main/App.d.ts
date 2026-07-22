@@ -3,9 +3,15 @@
 import {main} from '../models';
 import {paldata} from '../models';
 
+export function ApplyPreset(arg1:string,arg2:string):Promise<Array<main.PassiveInfo>>;
+
+export function ApplyPresetToSpecies(arg1:string,arg2:string,arg3:string):Promise<number>;
+
 export function BaseCamps(arg1:string):Promise<Array<main.CampInfo>>;
 
 export function BasePals(arg1:string):Promise<Array<main.PalInfo>>;
+
+export function DeletePreset(arg1:string):Promise<void>;
 
 export function GiveItem(arg1:string,arg2:string,arg3:number):Promise<number>;
 
@@ -20,6 +26,10 @@ export function Pals(arg1:string):Promise<Array<main.PalInfo>>;
 export function PickSaveFile():Promise<string>;
 
 export function Players():Promise<Array<main.PlayerInfo>>;
+
+export function Presets():Promise<Array<main.PresetInfo>>;
+
+export function SavePreset(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function SaveToDisk():Promise<main.SaveResult>;
 

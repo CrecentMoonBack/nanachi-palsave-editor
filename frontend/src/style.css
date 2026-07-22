@@ -680,3 +680,77 @@ button.apply {
   flex: none;
   text-align: right;
 }
+
+/* passive presets ------------------------------------------------------ */
+
+.preset-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--line);
+}
+.preset-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.preset {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.preset.stale {
+  border-color: var(--danger);
+}
+.preset-use {
+  border: none;
+  border-radius: 0;
+  padding: 4px 9px;
+  background: var(--panel-2);
+  font-size: 12px;
+}
+.preset-use:hover {
+  background: var(--accent-dim);
+  color: #1a1400;
+}
+.preset-del {
+  border: none;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  padding: 4px 7px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+}
+.preset-del:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+.preset-new {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.preset-new input {
+  width: 130px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.preset-new button {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+.preset-add {
+  padding: 4px 9px;
+  font-size: 12px;
+}
