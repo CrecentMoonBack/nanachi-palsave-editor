@@ -3,6 +3,9 @@ import "./style.css";
 import {
   BaseCamps,
   BasePals,
+  BaseStorages,
+  GiveContainerItem,
+  SetContainerItemCount,
   GiveItem,
   Inventory,
   OpenSave,
@@ -34,6 +37,16 @@ import {
 import { main } from "../wailsjs/go/models";
 
 type Tab = "pals" | "items" | "player";
+
+/**
+ * How a storage structure is named in the picker. The save has no Korean name
+ * for buildings, so the game's own id is shown rather than a guess at what
+ * "CoolerPalFoodBox" is called in Korean.
+ */
+function boxLabel(b: main.StorageInfo | null): string {
+  if (!b) return "";
+  return `거점 ${b.camp} · ${b.kind} (${b.items.length})`;
+}
 
 /**
  * The save property names behind each editable stat, paired with the label to
@@ -1717,6 +1730,33 @@ function ItemsTab({
   const [count, setCount] = useState(1);
   const [exact, setExact] = useState(false);
 
+  // Where the items being shown and edited live: the player's own pockets, or
+  // one of the boxes their guild built.
+  const [view, setView] = useState<"player" | "camp">("player");
+  const [boxes, setBoxes] = useState<main.StorageInfo[]>([]);
+  const [box, setBox] = useState("");
+
+  const loadBoxes = useCallback(async () => {
+    if (!uid) return;
+    try {
+      const got = await BaseStorages(uid);
+      setBoxes(got);
+      // Keep the current box selected across a refresh; fall back to the first.
+      setBox((b) =>
+        got.some((s) => s.containerId === b) ? b : (got[0]?.containerId ?? ""),
+      );
+    } catch {
+      setBoxes([]);
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    if (view === "camp") void loadBoxes();
+  }, [view, loadBoxes]);
+
+  const chosenBox = boxes.find((b) => b.containerId === box) ?? null;
+  const shown = view === "camp" ? (chosenBox?.items ?? []) : items;
+
   useEffect(() => {
     if (query.trim().length < 1) {
       setResults([]);
@@ -1731,16 +1771,23 @@ function ItemsTab({
 
   async function apply() {
     if (!chosen) return;
+    if (view === "camp" && !box) return;
     setBusy(true);
     try {
+      const where = view === "camp" ? boxLabel(chosenBox) : "인벤토리";
       if (exact) {
-        await SetItemCount(uid, chosen.id, count);
-        say(`${chosen.name} 을(를) ${count.toLocaleString()}개로 설정`);
+        if (view === "camp") await SetContainerItemCount(box, chosen.id, count);
+        else await SetItemCount(uid, chosen.id, count);
+        say(`${where}: ${chosen.name} 을(를) ${count.toLocaleString()}개로 설정`);
       } else {
-        const slot = await GiveItem(uid, chosen.id, count);
-        say(`${chosen.name} +${count.toLocaleString()} → 슬롯 ${slot}`);
+        const slot =
+          view === "camp"
+            ? await GiveContainerItem(box, chosen.id, count)
+            : await GiveItem(uid, chosen.id, count);
+        say(`${where}: ${chosen.name} +${count.toLocaleString()} → 슬롯 ${slot}`);
       }
       await onChanged();
+      if (view === "camp") await loadBoxes();
     } catch (e: any) {
       say(String(e), true);
     } finally {
@@ -1760,7 +1807,35 @@ function ItemsTab({
 
   return (
     <>
+      <div className="subtabs">
+        <button
+          className={`subtab ${view === "player" ? "active" : ""}`}
+          onClick={() => setView("player")}
+        >
+          소지품 <span className="n">{items.length}</span>
+        </button>
+        <button
+          className={`subtab ${view === "camp" ? "active" : ""}`}
+          onClick={() => setView("camp")}
+        >
+          거점 보관함 <span className="n">{boxes.length}</span>
+        </button>
+      </div>
+
       <div className="toolbar">
+        {view === "camp" && (
+          <>
+            <label>보관함</label>
+            <select value={box} onChange={(e) => setBox(e.target.value)}>
+              {boxes.length === 0 && <option value="">(없음)</option>}
+              {boxes.map((b) => (
+                <option key={b.containerId} value={b.containerId}>
+                  {boxLabel(b)}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <input
           type="text"
           placeholder="아이템 검색 (한글/영문)"
@@ -1801,11 +1876,17 @@ function ItemsTab({
         </button>
       </div>
 
-      {items.length === 0 ? (
-        <div className="empty">인벤토리가 비어 있습니다.</div>
+      {view === "camp" && boxes.length === 0 ? (
+        <div className="empty">
+          이 길드의 거점에 아이템을 담는 시설이 없습니다.
+        </div>
+      ) : shown.length === 0 ? (
+        <div className="empty">
+          {view === "camp" ? "이 보관함이 비어 있습니다." : "인벤토리가 비어 있습니다."}
+        </div>
       ) : (
         <div className="grid">
-          {items.map((it) => (
+          {shown.map((it) => (
             <div key={`${it.slot}-${it.itemId}`} className="card">
               <Icon file={it.icon} alt={it.name} />
               <div className="info">

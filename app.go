@@ -561,6 +561,55 @@ func (a *App) BaseCamps(uid string) ([]CampInfo, error) {
 	return out, nil
 }
 
+// StorageInfo is one item-holding structure in a base camp.
+type StorageInfo struct {
+	// Camp is the same 1-based number BaseCamps hands out.
+	Camp int `json:"camp"`
+	// Kind is the game's own building name, e.g. "ItemChest_04". There is no
+	// Korean building table yet, so this is shown raw rather than guessed at.
+	Kind string `json:"kind"`
+	// ContainerID addresses the box for the item calls below.
+	ContainerID string     `json:"containerId"`
+	Items       []ItemInfo `json:"items"`
+}
+
+// BaseStorages lists the storage in the given player's guild's camps.
+//
+// Camps are numbered exactly as BaseCamps numbers them, so the two views line
+// up. Structures with nothing in them are still listed — an empty chest is a
+// place to put things, and hiding it was the bug reported for camps.
+func (a *App) BaseStorages(uid string) ([]StorageInfo, error) {
+	if a.world == nil {
+		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	camps := a.guildCamps(uid)
+	index := make(map[gvas.GUID]int, len(camps))
+	for i, c := range camps {
+		index[c.ID] = i + 1
+	}
+
+	var out []StorageInfo
+	for _, s := range a.world.CampStorages() {
+		n, ok := index[s.CampID]
+		if !ok {
+			continue // another guild's camp
+		}
+		out = append(out, StorageInfo{
+			Camp:        n,
+			Kind:        s.Kind,
+			ContainerID: s.ContainerID.String(),
+			Items:       a.describeContainer(s.ContainerID),
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Camp != out[j].Camp {
+			return out[i].Camp < out[j].Camp
+		}
+		return out[i].Kind < out[j].Kind
+	})
+	return out, nil
+}
+
 // BasePals lists the pals working at the given player's guild's camps.
 func (a *App) BasePals(uid string) ([]PalInfo, error) {
 	if a.world == nil {
@@ -1152,6 +1201,11 @@ func (a *App) Inventory(uid string) ([]ItemInfo, error) {
 		return nil, err
 	}
 
+	return a.describeContainer(cid), nil
+}
+
+// describeContainer renders one container's stacks for the UI.
+func (a *App) describeContainer(cid gvas.GUID) []ItemInfo {
 	stacks := a.world.ContainerContents(cid)
 	out := make([]ItemInfo, 0, len(stacks))
 	for _, s := range stacks {
@@ -1165,7 +1219,7 @@ func (a *App) Inventory(uid string) ([]ItemInfo, error) {
 		out = append(out, ii)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Slot < out[j].Slot })
-	return out, nil
+	return out
 }
 
 // SetItemCount sets an existing stack to an exact count.
@@ -1185,6 +1239,43 @@ func (a *App) GiveItem(uid, itemID string, count int) (int32, error) {
 		return 0, err
 	}
 	return a.world.GiveItem(cid, itemID, int32(count))
+}
+
+// SetContainerItemCount sets a stack in any container, addressed by id. This
+// is what the base camp storage view edits through; the player-inventory calls
+// above are the same operation with the container looked up from a uid.
+func (a *App) SetContainerItemCount(containerID, itemID string, count int) error {
+	cid, err := a.namedContainer(containerID)
+	if err != nil {
+		return err
+	}
+	_, err = a.world.SetItemCount(cid, itemID, int32(count))
+	return err
+}
+
+// GiveContainerItem adds items to any container, addressed by id.
+func (a *App) GiveContainerItem(containerID, itemID string, count int) (int32, error) {
+	cid, err := a.namedContainer(containerID)
+	if err != nil {
+		return 0, err
+	}
+	return a.world.GiveItem(cid, itemID, int32(count))
+}
+
+// namedContainer resolves a container id string, refusing one the save does
+// not hold rather than letting a typo write into nothing.
+func (a *App) namedContainer(containerID string) (gvas.GUID, error) {
+	if a.world == nil {
+		return gvas.GUID{}, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	cid, err := gvas.ParseGUID(containerID)
+	if err != nil {
+		return gvas.GUID{}, fmt.Errorf("보관함 ID 형식이 잘못되었습니다: %w", err)
+	}
+	if _, ok := a.world.Container(cid); !ok {
+		return gvas.GUID{}, fmt.Errorf("그런 보관함이 없습니다")
+	}
+	return cid, nil
 }
 
 func (a *App) commonContainer(uid string) (gvas.GUID, error) {

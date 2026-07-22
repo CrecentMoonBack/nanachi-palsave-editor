@@ -9,7 +9,11 @@ export function BaseCamps(arg1:string):Promise<Array<main.CampInfo>>;
 
 export function BasePals(arg1:string):Promise<Array<main.PalInfo>>;
 
+export function BaseStorages(arg1:string):Promise<Array<main.StorageInfo>>;
+
 export function DeletePreset(arg1:string):Promise<void>;
+
+export function GiveContainerItem(arg1:string,arg2:string,arg3:number):Promise<number>;
 
 export function GiveItem(arg1:string,arg2:string,arg3:number):Promise<number>;
 
@@ -38,6 +42,8 @@ export function SaveToDisk():Promise<main.SaveResult>;
 export function SearchItems(arg1:string):Promise<Array<main.ItemChoice>>;
 
 export function SearchPassives(arg1:string):Promise<Array<main.PassiveInfo>>;
+
+export function SetContainerItemCount(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function SetItemCount(arg1:string,arg2:string,arg3:number):Promise<void>;
 

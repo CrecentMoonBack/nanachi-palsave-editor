@@ -14,8 +14,16 @@ export function BasePals(arg1) {
   return window['go']['main']['App']['BasePals'](arg1);
 }
 
+export function BaseStorages(arg1) {
+  return window['go']['main']['App']['BaseStorages'](arg1);
+}
+
 export function DeletePreset(arg1) {
   return window['go']['main']['App']['DeletePreset'](arg1);
+}
+
+export function GiveContainerItem(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GiveContainerItem'](arg1, arg2, arg3);
 }
 
 export function GiveItem(arg1, arg2, arg3) {
@@ -72,6 +80,10 @@ export function SearchItems(arg1) {
 
 export function SearchPassives(arg1) {
   return window['go']['main']['App']['SearchPassives'](arg1);
+}
+
+export function SetContainerItemCount(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetContainerItemCount'](arg1, arg2, arg3);
 }
 
 export function SetItemCount(arg1, arg2, arg3) {

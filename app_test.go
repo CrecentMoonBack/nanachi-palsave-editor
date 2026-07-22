@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -268,5 +269,179 @@ func TestEditableNamesAreRecognised(t *testing.T) {
 	if len(allowedTalent) != 4 || len(allowedRankBonus) != 4 {
 		t.Errorf("want 4 talents and 4 soul stats, got %d and %d",
 			len(allowedTalent), len(allowedRankBonus))
+	}
+}
+
+// TestBaseStoragesAreGuildScopedAndAddressable covers the storage view the
+// same way camps are covered: it must show this guild's boxes and no one
+// else's, and every box it offers must be one the item calls can actually
+// write to.
+func TestBaseStoragesAreGuildScopedAndAddressable(t *testing.T) {
+	if _, err := os.Stat(fixture); err != nil {
+		t.Skip("no save fixture; see scripts/setup.sh --all")
+	}
+	a := NewApp()
+	if _, err := a.OpenSave(fixture); err != nil {
+		t.Fatal(err)
+	}
+	players, err := a.Players()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	counts := map[int]bool{}
+	sawItems := false
+	for _, p := range players {
+		camps, err := a.BaseCamps(p.UID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		boxes, err := a.BaseStorages(p.UID)
+		if err != nil {
+			t.Fatalf("BaseStorages(%s): %v", p.Name, err)
+		}
+		for _, b := range boxes {
+			if b.Camp < 1 || b.Camp > len(camps) {
+				t.Errorf("%s: box %s in camp %d, outside 1..%d",
+					p.Name, b.Kind, b.Camp, len(camps))
+			}
+			if b.Kind == "" {
+				t.Errorf("%s: box in camp %d has no kind", p.Name, b.Camp)
+			}
+			// The id the UI is handed must round-trip, or every edit from the
+			// storage view fails at the first click.
+			if _, err := a.namedContainer(b.ContainerID); err != nil {
+				t.Errorf("%s: box %s id %q not addressable: %v",
+					p.Name, b.Kind, b.ContainerID, err)
+			}
+			if len(b.Items) > 0 {
+				sawItems = true
+			}
+		}
+		counts[len(boxes)] = true
+	}
+
+	if !sawItems {
+		t.Error("no camp box held any items; the container link is probably wrong")
+	}
+	if len(counts) < 2 {
+		t.Errorf("every player saw the same number of boxes (%v); the fixture has two guilds, so this is not scoped by guild", counts)
+	}
+}
+
+// copyFixture puts the save and its Players folder in a temp dir so a test can
+// write to it. SaveToDisk overwrites the file it opened, so this is what keeps
+// the real fixture untouched.
+func copyFixture(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	level := filepath.Join(dir, "Level.sav")
+	b, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Skipf("no save fixture: %v", err)
+	}
+	if err := os.WriteFile(level, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join("testdata", "Players")
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		t.Skipf("no player fixtures: %v", err)
+	}
+	dst := filepath.Join(dir, "Players")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		b, err := os.ReadFile(filepath.Join(src, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dst, e.Name()), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return level
+}
+
+// TestCampStorageEditSurvivesSaveAndReopen is the round trip that reading the
+// save back in my own process does not prove: write an item into a base camp
+// box, save, and open the file fresh. Everything up to Flush can look right
+// while the change never reaches the disk.
+func TestCampStorageEditSurvivesSaveAndReopen(t *testing.T) {
+	if err := oodle.Available(); err != nil {
+		t.Skipf("native codec unavailable: %v", err)
+	}
+	level := copyFixture(t)
+
+	const item = "PalSphere"
+	const want = 4321
+
+	a := NewApp()
+	if _, err := a.OpenSave(level); err != nil {
+		t.Fatal(err)
+	}
+	players, err := a.Players()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var target StorageInfo
+	var owner string
+	for _, p := range players {
+		boxes, err := a.BaseStorages(p.UID)
+		if err != nil || len(boxes) == 0 {
+			continue
+		}
+		target, owner = boxes[0], p.UID
+		break
+	}
+	if owner == "" {
+		t.Skip("fixture has no base camp storage")
+	}
+
+	before := int32(0)
+	for _, it := range target.Items {
+		if it.ItemID == item {
+			before += it.Count
+		}
+	}
+
+	if _, err := a.GiveContainerItem(target.ContainerID, item, want); err != nil {
+		t.Fatalf("GiveContainerItem: %v", err)
+	}
+	if _, err := a.SaveToDisk(); err != nil {
+		t.Fatalf("SaveToDisk: %v", err)
+	}
+
+	// A brand new App, reading the bytes that actually landed on disk.
+	b := NewApp()
+	if _, err := b.OpenSave(level); err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	boxes, err := b.BaseStorages(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got int32
+	found := false
+	for _, box := range boxes {
+		if box.ContainerID != target.ContainerID {
+			continue
+		}
+		found = true
+		for _, it := range box.Items {
+			if it.ItemID == item {
+				got += it.Count
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("box %s vanished after reopen", target.ContainerID)
+	}
+	// The delta, not the total: a box that already held these would let a
+	// no-op write pass a "want at least" check.
+	if got-before != want {
+		t.Errorf("after reopen the box gained %d %s, want exactly %d (before=%d after=%d)",
+			got-before, item, want, before, got)
 	}
 }
