@@ -52,6 +52,26 @@ export namespace main {
 	        this.icon = source["icon"];
 	    }
 	}
+	export class WorkInfo {
+	    id: string;
+	    name: string;
+	    bonus: number;
+	    base: number;
+	    hasAny: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.bonus = source["bonus"];
+	        this.base = source["base"];
+	        this.hasAny = source["hasAny"];
+	    }
+	}
 	export class PassiveInfo {
 	    id: string;
 	    name: string;
@@ -95,6 +115,7 @@ export namespace main {
 	    location: string;
 	    camp: number;
 	    passives: PassiveInfo[];
+	    work: WorkInfo[];
 	
 	    static createFrom(source: any = {}) {
 	        return new PalInfo(source);
@@ -122,6 +143,7 @@ export namespace main {
 	        this.location = source["location"];
 	        this.camp = source["camp"];
 	        this.passives = this.convertValues(source["passives"], PassiveInfo);
+	        this.work = this.convertValues(source["work"], WorkInfo);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -239,6 +261,7 @@ export namespace main {
 	    maxRank: number;
 	    maxTalent: number;
 	    maxRankBonus: number;
+	    maxWork: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -257,6 +280,26 @@ export namespace main {
 	        this.maxRank = source["maxRank"];
 	        this.maxTalent = source["maxTalent"];
 	        this.maxRankBonus = source["maxRankBonus"];
+	        this.maxWork = source["maxWork"];
+	    }
+	}
+
+}
+
+export namespace paldata {
+	
+	export class WorkSuitability {
+	    ID: string;
+	    NameKO: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkSuitability(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.NameKO = source["NameKO"];
 	    }
 	}
 

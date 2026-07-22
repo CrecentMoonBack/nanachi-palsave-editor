@@ -120,12 +120,18 @@ func (p *Pal) Level() int {
 	return int(b.Byte)
 }
 
+// MaxPalLevel is the game's own level cap.
+//
+// The experience curve in exp.go runs to 100, but the game stops at 80 — a pal
+// written above that is not something the game can produce, so the editor will
+// not produce it either.
+const MaxPalLevel = 80
+
 // SetLevel sets the level, creating the property when the pal is still at the
-// default. Levels above the game's cap are allowed — saves in the wild contain
-// them — but values outside a byte are refused.
+// default.
 func (p *Pal) SetLevel(level int) error {
-	if level < 1 || level > 255 {
-		return fmt.Errorf("palsave: level %d out of range 1..255", level)
+	if level < 1 || level > MaxPalLevel {
+		return fmt.Errorf("palsave: level %d out of range 1..%d", level, MaxPalLevel)
 	}
 	v, ok := p.params.Get("Level")
 	if !ok {
@@ -391,6 +397,109 @@ func (p *Pal) WorkSuitabilityBonuses() map[string]int {
 		}
 	}
 	return out
+}
+
+// MaxWorkSuitabilityRank is the highest rank the game accepts.
+const MaxWorkSuitabilityRank = 10
+
+// SetWorkSuitability sets the book-granted rank for one job.
+//
+// Rank 0 removes the entry rather than storing a zero, because the game omits
+// a job entirely when no book has been used on it — the same "absent is the
+// default" rule that governs Level.
+//
+// The enum member is stored in the save's own qualified form
+// ("EPalWorkSuitability::Handcraft"); callers may pass either form.
+func (p *Pal) SetWorkSuitability(kind string, rank int) error {
+	if rank < 0 || rank > MaxWorkSuitabilityRank {
+		return fmt.Errorf("palsave: work suitability rank %d out of range 0..%d",
+			rank, MaxWorkSuitabilityRank)
+	}
+	qualified := kind
+	if !strings.HasPrefix(qualified, workSuitabilityPrefix) {
+		qualified = workSuitabilityPrefix + qualified
+	}
+
+	v, ok := p.params.Get("GotWorkSuitabilityAddRankList")
+	if !ok {
+		if rank == 0 {
+			return nil // nothing to remove
+		}
+		arr, err := p.newWorkSuitabilityList()
+		if err != nil {
+			return err
+		}
+		p.params.Set("GotWorkSuitabilityAddRankList", arr)
+		v = arr
+	}
+	a, ok := v.(*gvas.ArrayProperty)
+	if !ok || a.Structs == nil {
+		return fmt.Errorf("palsave: GotWorkSuitabilityAddRankList is not a struct array")
+	}
+
+	// Update in place when the job is already listed.
+	for i, sv := range a.Structs.Values {
+		props, ok := sv.(*gvas.StructProperties)
+		if !ok {
+			continue
+		}
+		kv, ok := props.Props.Get("WorkSuitability")
+		if !ok {
+			continue
+		}
+		e, ok := kv.(*gvas.EnumProperty)
+		if !ok || e.Value.Value != qualified {
+			continue
+		}
+		if rank == 0 {
+			a.Structs.Values = append(a.Structs.Values[:i], a.Structs.Values[i+1:]...)
+			return nil
+		}
+		rv, ok := props.Props.Get("Rank")
+		if !ok {
+			props.Props.Set("Rank", &gvas.IntProperty{Value: int32(rank)})
+			return nil
+		}
+		ip, ok := rv.(*gvas.IntProperty)
+		if !ok {
+			return fmt.Errorf("palsave: Rank is %T, want *gvas.IntProperty", rv)
+		}
+		ip.Value = int32(rank)
+		return nil
+	}
+
+	if rank == 0 {
+		return nil // not listed and nothing to add
+	}
+	a.Structs.Values = append(a.Structs.Values, newWorkSuitabilityEntry(qualified, rank))
+	return nil
+}
+
+const workSuitabilityPrefix = "EPalWorkSuitability::"
+
+// newWorkSuitabilityEntry builds one {WorkSuitability, Rank} element.
+func newWorkSuitabilityEntry(qualified string, rank int) gvas.StructValue {
+	props := gvas.NewProperties()
+	props.Set("WorkSuitability", &gvas.EnumProperty{
+		Type:  gvas.Str("EPalWorkSuitability"),
+		Value: gvas.Str(qualified),
+	})
+	props.Set("Rank", &gvas.IntProperty{Value: int32(rank)})
+	return &gvas.StructProperties{Props: props}
+}
+
+// newWorkSuitabilityList creates the array for a pal that has never had a book
+// used on it, copying the element descriptor from another pal is not possible
+// here, so the fields are written out explicitly to match what the game emits.
+func (p *Pal) newWorkSuitabilityList() (*gvas.ArrayProperty, error) {
+	return &gvas.ArrayProperty{
+		ArrayType: gvas.Str("StructProperty"),
+		Structs: &gvas.StructArray{
+			PropName: gvas.Str("GotWorkSuitabilityAddRankList"),
+			PropType: gvas.Str("StructProperty"),
+			TypeName: gvas.Str("PalWorkSuitabilityInfo"),
+		},
+	}, nil
 }
 
 // setRawByte assigns a numeric ByteProperty, creating it when absent.

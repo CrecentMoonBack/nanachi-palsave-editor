@@ -73,6 +73,7 @@ type Status struct {
 	MaxRank      int `json:"maxRank"`
 	MaxTalent    int `json:"maxTalent"`
 	MaxRankBonus int `json:"maxRankBonus"`
+	MaxWork      int `json:"maxWork"`
 }
 
 func (a *App) Status() Status {
@@ -82,10 +83,11 @@ func (a *App) Status() Status {
 		SaveOpen:     a.world != nil,
 		SavePath:     a.levelPath,
 		MaxPassives:  MaxPassives,
-		MaxLevel:     palsave.MaxKnownLevel,
+		MaxLevel:     palsave.MaxPalLevel,
 		MaxRank:      palsave.MaxRank,
 		MaxTalent:    palsave.MaxTalent,
 		MaxRankBonus: palsave.MaxRankBonus,
+		MaxWork:      palsave.MaxWorkSuitabilityRank,
 	}
 	if err := oodle.Available(); err != nil {
 		s.CodecError = err.Error()
@@ -290,6 +292,25 @@ type PalInfo struct {
 	Camp int `json:"camp"`
 
 	Passives []PassiveInfo `json:"passives"`
+
+	// Work is every job in the game's order, with what a book has added and
+	// what the species starts with.
+	Work []WorkInfo `json:"work"`
+}
+
+// WorkInfo is one job row of the pal editor.
+//
+// Bonus and Base are kept apart rather than summed. Bonus is what the save
+// actually stores — the rank books added — while Base is the species' innate
+// rank from the reference tables. How the two combine into the level the game
+// displays has not been established, so the UI shows both and claims neither
+// is the total. See docs/HISTORY.md.
+type WorkInfo struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Bonus  int    `json:"bonus"`
+	Base   int    `json:"base"`
+	HasAny bool   `json:"hasAny"`
 }
 
 // Pal locations, as the UI groups them.
@@ -298,6 +319,30 @@ const (
 	LocationParty = "party"
 	LocationBase  = "base"
 )
+
+// describeWork builds a row per job, in the game's own order so the list does
+// not reshuffle as the user clicks between pals.
+//
+// Every job is listed, including ones the species cannot do, because a book
+// can grant a rank in a job the pal has no innate talent for.
+func describeWork(species string, bonuses map[string]int) []WorkInfo {
+	base, _ := paldata.BaseWorkSuitability(species)
+
+	jobs := paldata.WorkSuitabilities()
+	out := make([]WorkInfo, 0, len(jobs))
+	for _, j := range jobs {
+		bonus := bonuses[paldata.QualifyWorkSuitability(j.ID)]
+		w := WorkInfo{
+			ID:     j.ID,
+			Name:   j.NameKO,
+			Bonus:  bonus,
+			Base:   base[j.ID],
+			HasAny: bonus > 0 || base[j.ID] > 0,
+		}
+		out = append(out, w)
+	}
+	return out
+}
 
 // palLocation classifies a pal by the container holding it.
 //
@@ -420,6 +465,7 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 	for _, id := range p.Passives() {
 		info.Passives = append(info.Passives, describePassive(id))
 	}
+	info.Work = describeWork(species, p.WorkSuitabilityBonuses())
 	if ko, ok := paldata.PalName(species); ok {
 		info.Name = ko
 	}
@@ -597,7 +643,7 @@ func (a *App) SetPalLevel(instanceID string, level int) error {
 	}
 	exp, ok := palsave.TotalPalExpForLevel(level)
 	if !ok {
-		return fmt.Errorf("레벨 %d 에 해당하는 경험치가 없습니다 (1-%d)", level, palsave.MaxKnownLevel)
+		return fmt.Errorf("레벨 %d 는 범위를 벗어납니다 (1-%d)", level, palsave.MaxPalLevel)
 	}
 	return p.SetLevelWithExp(level, exp)
 }
@@ -652,6 +698,31 @@ var (
 		palsave.RankHP:         true,
 	}
 )
+
+// SetPalWorkSuitability sets the rank a book has added for one job.
+//
+// Rank 0 removes the job from the pal, which is how the save represents "no
+// book was ever used", rather than storing an explicit zero.
+//
+// The job name is checked against the reference table for the same reason the
+// talent and soul setters are: this writes a name straight into the save, so
+// an unrecognised one would create a junk entry the game silently ignores.
+func (a *App) SetPalWorkSuitability(instanceID, job string, rank int) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	if _, ok := paldata.WorkSuitabilityName(job); !ok {
+		return fmt.Errorf("알 수 없는 노동 적성입니다: %s", job)
+	}
+	return p.SetWorkSuitability(job, rank)
+}
+
+// WorkSuitabilityOptions lists every job with its Korean label, for the editor
+// to render rows in a fixed order.
+func (a *App) WorkSuitabilityOptions() []paldata.WorkSuitability {
+	return paldata.WorkSuitabilities()
+}
 
 // SetPalPassives replaces a pal's passive skill list.
 //

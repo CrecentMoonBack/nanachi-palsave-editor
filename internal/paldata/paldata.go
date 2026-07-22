@@ -19,7 +19,7 @@ import (
 	"sync"
 )
 
-//go:embed data/items.json data/pals.json data/elements.json data/passives.json
+//go:embed data/items.json data/pals.json data/elements.json data/passives.json data/work_suitability.json
 var files embed.FS
 
 // iconExt is the extension of the artwork the GUI looks for in assets/icons/.
@@ -128,6 +128,10 @@ var (
 	elements map[string]*Element
 	passives map[string]*Passive
 
+	// workBase holds each species' innate job ranks, keyed by bare job name.
+	// Species with no job at all are absent.
+	workBase map[string]map[string]int
+
 	// palsFold maps a lowercased id to its real table key, so a save's
 	// capitalisation never has to match the table's.
 	palsFold map[string]string
@@ -147,6 +151,7 @@ func load() {
 		mustJSON("data/pals.json", &pals)
 		mustJSON("data/elements.json", &elements)
 		mustJSON("data/passives.json", &passives)
+		mustJSON("data/work_suitability.json", &workBase)
 
 		itemList = make([]*Item, 0, len(items))
 		for id, it := range items {

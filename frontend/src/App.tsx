@@ -19,6 +19,7 @@ import {
   SetPalRank,
   SetPalRankBonus,
   SetPalTalent,
+  SetPalWorkSuitability,
   Status,
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
@@ -613,6 +614,7 @@ function PalEditor({
   const maxTalent = status?.maxTalent ?? 100;
   const maxSoul = status?.maxRankBonus ?? 10;
   const maxPassives = status?.maxPassives ?? 4;
+  const maxWork = status?.maxWork ?? 10;
 
   const [level, setLevel] = useState(pal.level);
   const [rank, setRank] = useState(pal.rank);
@@ -629,6 +631,11 @@ function PalEditor({
     Rank_CraftSpeed: pal.soulCraftSpeed,
   });
   const [passives, setPassives] = useState<main.PassiveInfo[]>(pal.passives);
+  // Keyed by bare job id, holding only what a book added — the species
+  // base is display context and is never written.
+  const [work, setWork] = useState<Record<string, number>>(() =>
+    Object.fromEntries((pal.work ?? []).map((w) => [w.id, w.bonus]))
+  );
 
   async function apply() {
     setBusy(true);
@@ -646,6 +653,12 @@ function PalEditor({
       }
       for (const s of SOULS) {
         await SetPalRankBonus(pal.instanceId, s.prop, souls[s.prop]);
+      }
+      for (const w of pal.work ?? []) {
+        const next = work[w.id] ?? 0;
+        if (next !== w.bonus) {
+          await SetPalWorkSuitability(pal.instanceId, w.id, next);
+        }
       }
       say(`${pal.name} 수정됨 · Lv${level} · ${rank}농축`);
       await onChanged();
@@ -774,6 +787,41 @@ function PalEditor({
               />
             </label>
           ))}
+        </div>
+      </div>
+
+      <div className="field-group">
+        <div className="group-title">
+          노동 적성 <span className="range">0–{maxWork}</span>
+        </div>
+        <div className="hint">
+          적성 향상서를 먹여 올리는 값입니다. 세이브에는 <b>책으로 더한 분량만</b>
+          기록되고, 종족이 원래 가진 적성은 따로입니다. 둘을 합치면 게임에서
+          몇 등급으로 보이는지는 아직 확인하지 못해서, 여기서는 각각 그대로
+          보여줍니다.
+        </div>
+        <div className="work-grid">
+          {(pal.work ?? []).map((w) => {
+            const cur = work[w.id] ?? 0;
+            const dim = cur === 0 && w.base === 0;
+            return (
+              <label key={w.id} className={`work-row ${dim ? "dim" : ""}`}>
+                <span className="work-name">{w.name}</span>
+                <span className="work-base" title="종족이 원래 가진 적성">
+                  {w.base > 0 ? `기본 ${w.base}` : "—"}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  max={maxWork}
+                  value={cur}
+                  onChange={(e) =>
+                    setWork({ ...work, [w.id]: Number(e.target.value) })
+                  }
+                />
+              </label>
+            );
+          })}
         </div>
       </div>
 

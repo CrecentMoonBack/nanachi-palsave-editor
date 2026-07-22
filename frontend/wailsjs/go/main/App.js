@@ -74,6 +74,14 @@ export function SetPalTalent(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetPalTalent'](arg1, arg2, arg3);
 }
 
+export function SetPalWorkSuitability(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetPalWorkSuitability'](arg1, arg2, arg3);
+}
+
 export function Status() {
   return window['go']['main']['App']['Status']();
+}
+
+export function WorkSuitabilityOptions() {
+  return window['go']['main']['App']['WorkSuitabilityOptions']();
 }

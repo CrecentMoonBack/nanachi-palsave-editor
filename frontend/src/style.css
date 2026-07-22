@@ -641,3 +641,42 @@ button.apply {
 .subtab.active .n {
   color: var(--accent-dim);
 }
+
+/* work suitability ----------------------------------------------------- */
+
+.work-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 6px;
+}
+
+.work-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 9px;
+}
+.work-row.dim {
+  opacity: 0.5;
+}
+.work-row .work-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.work-row .work-base {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.work-row input {
+  width: 62px;
+  flex: none;
+  text-align: right;
+}
