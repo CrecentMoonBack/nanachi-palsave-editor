@@ -49,12 +49,22 @@ jobs:
           git checkout ff5aeb9e45e362e8d6bb1199aa82406285dd2a18
           git submodule update --init --depth 1
 
-      # The runner's default gcc is MinGW-w64, which is what build.sh expects.
+      # build.sh needs MinGW-w64 g++. The runner has more than one gcc on PATH
+      # (Strawberry Perl ships one), so the MSYS2 mingw64 toolchain is put
+      # first deliberately rather than trusting whichever wins — a different
+      # gcc is exactly the kind of thing that builds a DLL that then fails to
+      # load at runtime. The version is printed so a broken build says which
+      # compiler produced it.
       - name: Build the native codec
         shell: bash
         run: |
+          if [ -x /c/msys64/mingw64/bin/g++.exe ]; then
+            export PATH="/c/msys64/mingw64/bin:$PATH"
+          fi
+          echo "using: $(command -v g++)"
           g++ --version
           bash third_party/oodle/build.sh
+          ls -la third_party/oodle/nanachi_ooz.dll
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -68,6 +78,16 @@ jobs:
       - name: Test
         shell: bash
         run: go test ./...
+
+      # The save fixtures are gitignored, so most tests skip here and a green
+      # test run does not prove the DLL that was just built actually loads.
+      # This does: it is the same check build.sh runs locally, against the
+      # binary and DLL that are about to be packaged.
+      - name: Smoke test the codec
+        shell: bash
+        run: |
+          cp third_party/oodle/nanachi_ooz.dll build/bin/
+          cd build/bin && ./palsave.exe codec
 
       - name: Package
         shell: bash

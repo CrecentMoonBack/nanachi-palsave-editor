@@ -107,8 +107,3 @@ frontend/           React + TypeScript
 - [oMaN-Rod/palworld-save-pal](https://github.com/oMaN-Rod/palworld-save-pal) — Rust + Svelte 에디터. 가장 완성도 높고, 정확성 기준으로 삼았다
 - [deafdudecomputers/PalworldSaveTools](https://github.com/deafdudecomputers/PalworldSaveTools) — Python. Oodle 호출 규약을 여기서 가져왔다
 - [zao/ooz](https://github.com/zao/ooz) — Kraken 인코더. 상류 [powzix/ooz](https://github.com/powzix/ooz) 는 디코더만 있다
-
-## 형제 프로젝트
-
-[NanachiDeprotector](https://github.com/CrecentMoonBack) — 워크래프트 3 맵 디프로텍터.
-같은 스택(Go + Wails), 같은 DLL 바인딩 방식.
