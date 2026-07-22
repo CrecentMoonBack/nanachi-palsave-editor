@@ -1236,3 +1236,17 @@ button.tiny {
   font-size: 15px;
   line-height: 1;
 }
+
+/* Checkbox that sits inline with its label rather than stretching like the
+   number fields around it. */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.check input {
+  margin: 0;
+}

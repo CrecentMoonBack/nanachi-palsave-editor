@@ -43,6 +43,8 @@ import {
   SetPalRankBonus,
   SetPalTalent,
   SetPalWorkSuitability,
+  SetPalGender,
+  SetPalAlpha,
   Status,
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
@@ -987,6 +989,8 @@ function PalEditor({
     Rank_CraftSpeed: pal.soulCraftSpeed,
   });
   const [passives, setPassives] = useState<main.PassiveInfo[]>(pal.passives);
+  const [gender, setGender] = useState(pal.gender);
+  const [alpha, setAlpha] = useState(pal.isBoss);
   // Keyed by bare job id, holding only what a book added — the species base is
   // display context and is never written.
   const [work, setWork] = useState<Record<string, number>>(() =>
@@ -1002,6 +1006,7 @@ function PalEditor({
     souls: !many,
     work: !many,
     passives: !many,
+    traits: !many,
   });
   const enable = (k: string) => setOn((o) => ({ ...o, [k]: true }));
   const nothingOn = many && !Object.values(on).some(Boolean);
@@ -1017,6 +1022,13 @@ function PalEditor({
             t.instanceId,
             passives.map((p) => p.id),
           );
+        }
+        if (on.traits) {
+          if (gender) await SetPalGender(t.instanceId, gender);
+          // Only when it differs: this rewrites CharacterID, and there is no
+          // reason to touch every selected pal's species to set it to what it
+          // already is.
+          if (alpha !== t.isBoss) await SetPalAlpha(t.instanceId, alpha);
         }
         if (on.level) await SetPalLevel(t.instanceId, level);
         if (on.rank) await SetPalRank(t.instanceId, rank);
@@ -1162,6 +1174,41 @@ function PalEditor({
             {"★".repeat(Math.max(0, rank - 1)) +
               "☆".repeat(Math.max(0, maxRank - rank))}
           </span>
+        </div>
+      </div>
+
+      <div className={`field-group ${many && !on.traits ? "off" : ""}`}>
+        <div className="group-title">
+          <Gate k="traits" />
+          성별 · 알파
+        </div>
+        <div className="hint">
+          알파는 종족 이름 앞에 붙는 표시일 뿐이라, 켜면 그 자리에서 알파가
+          됩니다. 몸집이 커지고 체력이 올라갑니다.
+        </div>
+        <div className="field-row">
+          <select
+            value={gender}
+            onChange={(e) => {
+              setGender(e.target.value);
+              enable("traits");
+            }}
+          >
+            {!gender && <option value="">(성별 없음)</option>}
+            <option value="Male">수컷</option>
+            <option value="Female">암컷</option>
+          </select>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={alpha}
+              onChange={(e) => {
+                setAlpha(e.target.checked);
+                enable("traits");
+              }}
+            />{" "}
+            알파
+          </label>
         </div>
       </div>
 
@@ -2220,6 +2267,8 @@ function AddPalDialog({
   const [rank, setRank] = useState(1);
   const [count, setCount] = useState(1);
   const [talents, setTalents] = useState<Record<string, number>>({});
+  const [alpha, setAlpha] = useState(false);
+  const [gender, setGender] = useState("Male");
   const [space, setSpace] = useState<number | null>(null);
   const [working, setWorking] = useState(false);
 
@@ -2249,7 +2298,7 @@ function AddPalDialog({
     setWorking(true);
     try {
       for (let i = 0; i < count; i++) {
-        await AddPal(uid, chosen.id, level, rank, talents, []);
+        await AddPal(uid, chosen.id, level, rank, talents, [], alpha, gender);
       }
       say(`${chosen.name} ${count}마리를 팰박스에 넣었습니다`);
       await onAdded();

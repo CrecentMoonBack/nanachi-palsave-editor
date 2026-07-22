@@ -568,7 +568,7 @@ func TestAddPalSurvivesSaveAndReopen(t *testing.T) {
 	want := map[string]bool{}
 	for i := 0; i < n; i++ {
 		id, err := a.AddPal(uid, "SheepBall", 30, 3,
-			map[string]int{"Talent_HP": 80}, nil)
+			map[string]int{"Talent_HP": 80}, nil, false, "")
 		if err != nil {
 			t.Fatalf("AddPal %d: %v", i, err)
 		}
@@ -747,4 +747,110 @@ func TestNoAPIReturnsNullSlices(t *testing.T) {
 	for _, k := range keys {
 		t.Errorf("%s serialises as null %d times; the UI treats it as an array", k, found[k])
 	}
+}
+
+// TestBasePalsIsEmptyNotNullForAStranger covers the crash a user hit:
+// "TypeError: g is not iterable" on clicking a player.
+//
+// The UI does [...roster, ...basePals], and a nil Go slice marshals to JSON
+// null, which is not iterable. BasePals returned nil whenever the player's
+// guild had no base pals — my own fixture has some for everyone, which is why
+// the earlier null-slice test passed while users still crashed. An unknown uid
+// reaches the same empty path deterministically.
+func TestBasePalsIsEmptyNotNullForAStranger(t *testing.T) {
+	if _, err := os.Stat(fixture); err != nil {
+		t.Skip("no save fixture; see scripts/setup.sh --all")
+	}
+	a := NewApp()
+	if _, err := a.OpenSave(fixture); err != nil {
+		t.Fatal(err)
+	}
+
+	const stranger = "00000000-0000-4000-8000-000000000000"
+	got, err := a.BasePals(stranger)
+	if err != nil {
+		t.Fatalf("BasePals: %v", err)
+	}
+	if got == nil {
+		t.Fatal("BasePals returned nil; it marshals to null and the UI spreads it")
+	}
+	b, _ := json.Marshal(got)
+	if string(b) != "[]" {
+		t.Errorf("BasePals serialised as %s, want []", b)
+	}
+
+	boxes, err := a.BaseStorages(stranger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if boxes == nil {
+		t.Error("BaseStorages returned nil")
+	}
+}
+
+// An alpha created through the app must still be an alpha after the save has
+// been written and reopened, and must remain the species that was asked for —
+// the BOSS_ prefix changes CharacterID, which is what the reference tables and
+// the icon lookup key on.
+func TestAddAlphaPalSurvivesSaveAndReopen(t *testing.T) {
+	if err := oodle.Available(); err != nil {
+		t.Skipf("native codec unavailable: %v", err)
+	}
+	level := copyFixture(t)
+
+	a := NewApp()
+	if _, err := a.OpenSave(level); err != nil {
+		t.Fatal(err)
+	}
+	players, err := a.Players()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var uid string
+	for _, p := range players {
+		if n, err := a.PalboxSpace(p.UID); err == nil && n > 2 {
+			uid = p.UID
+			break
+		}
+	}
+	if uid == "" {
+		t.Skip("no player with a reachable palbox")
+	}
+
+	id, err := a.AddPal(uid, "SheepBall", 25, 2, nil, nil, true, "Female")
+	if err != nil {
+		t.Fatalf("AddPal alpha: %v", err)
+	}
+	if _, err := a.SaveToDisk(); err != nil {
+		t.Fatal(err)
+	}
+
+	b := NewApp()
+	if _, err := b.OpenSave(level); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range b.world.Chars() {
+		if c.InstanceID.String() != id {
+			continue
+		}
+		if !c.Pal.IsBoss() {
+			t.Errorf("not an alpha after reopen: CharacterID=%q", c.Pal.CharacterID())
+		}
+		if got := c.Pal.Species(); got != "SheepBall" {
+			t.Errorf("species is %q after reopen, want SheepBall", got)
+		}
+		if got := c.Pal.Gender(); got != "Female" {
+			t.Errorf("gender is %q after reopen, want Female", got)
+		}
+		// The UI must still be able to name and draw it.
+		info := b.describePal(uid, c)
+		if info.Name == "" || info.Name == info.SpeciesID {
+			t.Errorf("alpha has no Korean name: %q", info.Name)
+		}
+		if !info.IsBoss {
+			t.Error("describePal does not report it as an alpha")
+		}
+		return
+	}
+	t.Fatal("the alpha is not in the reopened save")
 }

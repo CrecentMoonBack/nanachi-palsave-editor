@@ -244,7 +244,7 @@ func (a *App) Players() ([]PlayerInfo, error) {
 	if a.world == nil {
 		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
 	}
-	var out []PlayerInfo
+	out := []PlayerInfo{}
 	for _, c := range a.world.Players() {
 		uid := c.PlayerUID.String()
 		name := c.Pal.Nickname()
@@ -278,6 +278,9 @@ type PalInfo struct {
 	Name       string `json:"name"`
 	Nickname   string `json:"nickname"`
 	IsBoss     bool   `json:"isBoss"`
+	// Gender is "Male", "Female", or "" when the save records none — eleven
+	// pals in the live save have no Gender at all.
+	Gender string `json:"gender"`
 	Icon       string `json:"icon"`
 
 	Level int   `json:"level"`
@@ -453,6 +456,7 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 		SpeciesID:     species,
 		Nickname:      p.Nickname(),
 		IsBoss:        p.IsBoss(),
+		Gender:        p.Gender(),
 		Level:         p.Level(),
 		Exp:           p.Exp(),
 		Rank:          p.Rank(),
@@ -593,7 +597,7 @@ func (a *App) BaseStorages(uid string) ([]StorageInfo, error) {
 		index[c.ID] = i + 1
 	}
 
-	var out []StorageInfo
+	out := []StorageInfo{}
 	for _, s := range a.world.CampStorages() {
 		n, ok := index[s.CampID]
 		if !ok {
@@ -620,7 +624,7 @@ func (a *App) BaseStorages(uid string) ([]StorageInfo, error) {
 // Destination is the palbox rather than the party on purpose: the party has
 // five slots and is usually full, and a pal appearing in the box is what a
 // user expects from "add".
-func (a *App) AddPal(uid, speciesID string, level, rank int, talents map[string]int, passives []string) (string, error) {
+func (a *App) AddPal(uid, speciesID string, level, rank int, talents map[string]int, passives []string, alpha bool, gender string) (string, error) {
 	if a.world == nil {
 		return "", fmt.Errorf("세이브가 열려 있지 않습니다")
 	}
@@ -655,6 +659,8 @@ func (a *App) AddPal(uid, speciesID string, level, rank int, talents map[string]
 		Rank:      rank,
 		Talents:   talents,
 		Passives:  passives,
+		Alpha:     alpha,
+		Gender:    gender,
 		Owner:     owner,
 		Container: box,
 	})
@@ -669,6 +675,27 @@ type PalChoice struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Icon string `json:"icon"`
+}
+
+// SetPalGender sets a pal's gender.
+func (a *App) SetPalGender(instanceID, gender string) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	return p.SetGender(gender)
+}
+
+// SetPalAlpha turns the alpha (boss) variant on or off.
+//
+// Being an alpha is only the BOSS_ prefix on CharacterID; the game derives the
+// bigger model and the extra health from it.
+func (a *App) SetPalAlpha(instanceID string, alpha bool) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	return p.SetAlpha(alpha)
 }
 
 // SearchPals finds species by id or Korean name.
@@ -748,7 +775,7 @@ func (a *App) BasePals(uid string) ([]PalInfo, error) {
 	camps := a.guildCamps(uid)
 	pals := a.campPals(camps)
 
-	var out []PalInfo
+	out := []PalInfo{}
 	for i, c := range camps {
 		for _, e := range pals[c.ContainerID] {
 			info := a.describePal("", e)
@@ -1146,7 +1173,7 @@ func describeStats(p *palsave.Pal, list string) []StatInfo {
 		return nil
 	}
 
-	var out []StatInfo
+	out := []StatInfo{}
 	seen := map[string]bool{}
 	for _, sp := range paldata.StatusPoints() {
 		v, ok := have[sp.ID]
@@ -1261,7 +1288,7 @@ func (a *App) Relics(uid string) ([]RelicInfo, error) {
 	}
 	have := pf.save.Relics()
 
-	var out []RelicInfo
+	out := []RelicInfo{}
 	seen := map[string]bool{}
 	for _, r := range paldata.Relics() {
 		key := paldata.QualifyRelic(r.ID)

@@ -525,3 +525,66 @@ func (p *Pal) setRawByte(name string, value uint8) error {
 	}
 	return b.SetByte(value)
 }
+
+// Gender values as the save writes them.
+const (
+	genderPrefix = "EPalGenderType::"
+	GenderMale   = "Male"
+	GenderFemale = "Female"
+)
+
+// Gender returns "Male", "Female", or "" when the save records none.
+//
+// Eleven pals in the live save carry no Gender at all, so absent is a real
+// state rather than a parse failure — it is left alone rather than guessed at.
+func (p *Pal) Gender() string {
+	v, ok := p.params.Get("Gender")
+	if !ok {
+		return ""
+	}
+	e, ok := v.(*gvas.EnumProperty)
+	if !ok {
+		return ""
+	}
+	return strings.TrimPrefix(e.Value.Value, genderPrefix)
+}
+
+// SetGender writes the pal's gender. Only the two the game defines are
+// accepted; an empty string is refused rather than deleting the property,
+// because removing it is not the same edit and has not been shown to be safe.
+func (p *Pal) SetGender(g string) error {
+	bare := strings.TrimPrefix(g, genderPrefix)
+	if bare != GenderMale && bare != GenderFemale {
+		return fmt.Errorf("palsave: gender %q is not %s or %s", g, GenderMale, GenderFemale)
+	}
+	p.params.Set("Gender", &gvas.EnumProperty{
+		Type:  gvas.Str("EPalGenderType"),
+		Value: gvas.Str(genderPrefix + bare),
+	})
+	return nil
+}
+
+// SetAlpha turns the alpha (boss) variant on or off.
+//
+// Being an alpha is nothing but the BOSS_ prefix on CharacterID — the game
+// derives the larger model and the extra health from it. So this is a rename,
+// not a stat change, and Species()/IsBoss() already treat the prefix that way.
+func (p *Pal) SetAlpha(alpha bool) error {
+	id := p.CharacterID()
+	if id == "" {
+		return fmt.Errorf("palsave: this pal has no CharacterID")
+	}
+	bare := strings.TrimPrefix(id, alphaIDPrefix)
+	want := bare
+	if alpha {
+		want = alphaIDPrefix + bare
+	}
+	if want == id {
+		return nil
+	}
+	p.params.Set("CharacterID", &gvas.NameProperty{Value: gvas.Str(want)})
+	return nil
+}
+
+// alphaIDPrefix is what marks an alpha in CharacterID.
+const alphaIDPrefix = "BOSS_"

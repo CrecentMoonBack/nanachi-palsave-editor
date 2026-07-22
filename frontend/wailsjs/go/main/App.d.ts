@@ -3,7 +3,7 @@
 import {main} from '../models';
 import {paldata} from '../models';
 
-export function AddPal(arg1:string,arg2:string,arg3:number,arg4:number,arg5:Record<string, number>,arg6:Array<string>):Promise<string>;
+export function AddPal(arg1:string,arg2:string,arg3:number,arg4:number,arg5:Record<string, number>,arg6:Array<string>,arg7:boolean,arg8:string):Promise<string>;
 
 export function ApplyPreset(arg1:string,arg2:string):Promise<Array<main.PassiveInfo>>;
 
@@ -52,6 +52,10 @@ export function SearchPassives(arg1:string):Promise<Array<main.PassiveInfo>>;
 export function SetContainerItemCount(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function SetItemCount(arg1:string,arg2:string,arg3:number):Promise<void>;
+
+export function SetPalAlpha(arg1:string,arg2:boolean):Promise<void>;
+
+export function SetPalGender(arg1:string,arg2:string):Promise<void>;
 
 export function SetPalLevel(arg1:string,arg2:number):Promise<void>;
 

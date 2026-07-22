@@ -116,6 +116,7 @@ export namespace main {
 	    name: string;
 	    nickname: string;
 	    isBoss: boolean;
+	    gender: string;
 	    icon: string;
 	    level: number;
 	    exp: number;
@@ -144,6 +145,7 @@ export namespace main {
 	        this.name = source["name"];
 	        this.nickname = source["nickname"];
 	        this.isBoss = source["isBoss"];
+	        this.gender = source["gender"];
 	        this.icon = source["icon"];
 	        this.level = source["level"];
 	        this.exp = source["exp"];

@@ -3,6 +3,7 @@ package palsave
 import (
 	"crypto/rand"
 	"fmt"
+	"strings"
 
 	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/gvas"
 )
@@ -143,6 +144,10 @@ type NewPalSpec struct {
 	Talents map[string]int
 	// Passives are passive skill ids; at most MaxPassives.
 	Passives []string
+	// Alpha makes it the BOSS_ variant, which is the whole of what an alpha is.
+	Alpha bool
+	// Gender is "Male" or "Female"; empty leaves whatever the donor had.
+	Gender string
 	// Owner is the player who will own it, and Container their palbox.
 	Owner     gvas.GUID
 	Container gvas.GUID
@@ -226,7 +231,11 @@ func (w *World) AddPal(spec NewPalSpec) (gvas.GUID, error) {
 func preparePal(p *Pal, spec NewPalSpec, instance gvas.GUID, slotIndex int32) error {
 	params := p.Params()
 
-	params.Set("CharacterID", &gvas.NameProperty{Value: gvas.Str(spec.SpeciesID)})
+	species := spec.SpeciesID
+	if spec.Alpha {
+		species = alphaIDPrefix + strings.TrimPrefix(species, alphaIDPrefix)
+	}
+	params.Set("CharacterID", &gvas.NameProperty{Value: gvas.Str(species)})
 	setGUIDProp(params, "OwnerPlayerUId", spec.Owner)
 	setGUIDProp(params, "OldOwnerPlayerUId", spec.Owner)
 
@@ -248,6 +257,11 @@ func preparePal(p *Pal, spec NewPalSpec, instance gvas.GUID, slotIndex int32) er
 	}
 	for name, v := range spec.Talents {
 		if err := p.SetTalent(name, v); err != nil {
+			return err
+		}
+	}
+	if spec.Gender != "" {
+		if err := p.SetGender(spec.Gender); err != nil {
 			return err
 		}
 	}

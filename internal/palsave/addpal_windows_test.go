@@ -312,3 +312,81 @@ func TestAddPalRejectsBadInput(t *testing.T) {
 		}
 	}
 }
+
+// Gender round-trips through the encoder, and only the two the game defines
+// are accepted.
+func TestSetGender(t *testing.T) {
+	w := loadLevelWorld(t)
+	var p *Pal
+	for _, c := range w.Chars() {
+		if !c.Pal.IsPlayer() && c.Pal.Gender() != "" {
+			p = c.Pal
+			break
+		}
+	}
+	if p == nil {
+		t.Skip("no pal with a gender in the fixture")
+	}
+
+	for _, g := range []string{GenderMale, GenderFemale} {
+		if err := p.SetGender(g); err != nil {
+			t.Fatalf("SetGender(%s): %v", g, err)
+		}
+		if got := p.Gender(); got != g {
+			t.Errorf("Gender() = %q after setting %q", got, g)
+		}
+	}
+	// The qualified form the save itself uses must also be accepted.
+	if err := p.SetGender("EPalGenderType::Male"); err != nil {
+		t.Errorf("qualified form rejected: %v", err)
+	}
+	for _, bad := range []string{"", "male", "Other", "EPalGenderType::Nope"} {
+		if err := p.SetGender(bad); err == nil {
+			t.Errorf("SetGender(%q) should have failed", bad)
+		}
+	}
+}
+
+// Alpha is the BOSS_ prefix and nothing else, so toggling it must not disturb
+// the species the reference tables key on.
+func TestSetAlphaIsJustThePrefix(t *testing.T) {
+	w := loadLevelWorld(t)
+	var p *Pal
+	for _, c := range w.Chars() {
+		if !c.Pal.IsPlayer() && !c.Pal.IsBoss() && c.Pal.CharacterID() != "" {
+			p = c.Pal
+			break
+		}
+	}
+	if p == nil {
+		t.Skip("no ordinary pal in the fixture")
+	}
+	species := p.Species()
+
+	if err := p.SetAlpha(true); err != nil {
+		t.Fatal(err)
+	}
+	if !p.IsBoss() {
+		t.Error("IsBoss() is false after SetAlpha(true)")
+	}
+	if got := p.CharacterID(); got != "BOSS_"+species {
+		t.Errorf("CharacterID = %q, want BOSS_%s", got, species)
+	}
+	if got := p.Species(); got != species {
+		t.Errorf("Species changed to %q; the prefix must not alter it", got)
+	}
+
+	if err := p.SetAlpha(false); err != nil {
+		t.Fatal(err)
+	}
+	if p.IsBoss() {
+		t.Error("still a boss after SetAlpha(false)")
+	}
+	if got := p.CharacterID(); got != species {
+		t.Errorf("CharacterID = %q, want %s", got, species)
+	}
+	// Toggling to the state it is already in is a no-op, not an error.
+	if err := p.SetAlpha(false); err != nil {
+		t.Errorf("no-op SetAlpha: %v", err)
+	}
+}
