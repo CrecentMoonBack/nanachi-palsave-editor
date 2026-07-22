@@ -905,6 +905,159 @@ func (a *App) findPal(instanceID string) (*palsave.Pal, error) {
 	return nil, fmt.Errorf("팰을 찾을 수 없습니다: %s", instanceID)
 }
 
+// --- player stats ---------------------------------------------------------
+
+// StatInfo is one status point row of the player editor.
+//
+// The save keys these by Japanese name — 最大HP and so on — which are internal
+// identifiers, not display text. Key is what gets written back; Name is ours.
+type StatInfo struct {
+	Key   string `json:"key"`
+	Name  string `json:"name"`
+	Value int    `json:"value"`
+	// Known is false for a status the label table does not cover, so the UI
+	// can show the raw key rather than pretend it understood it.
+	Known bool `json:"known"`
+}
+
+// PlayerDetail is everything the player editor shows.
+type PlayerDetail struct {
+	UID    string `json:"uid"`
+	Name   string `json:"name"`
+	Level  int    `json:"level"`
+	Exp    int64  `json:"exp"`
+	Unused int    `json:"unused"`
+
+	// Stats is what levelling lets you spend. Ex is a second, separate track
+	// whose values sit far higher; the two are not interchangeable.
+	Stats []StatInfo `json:"stats"`
+	Ex    []StatInfo `json:"ex"`
+}
+
+// PlayerDetail returns one player's editable numbers.
+func (a *App) PlayerDetail(uid string) (*PlayerDetail, error) {
+	c, err := a.findPlayer(uid)
+	if err != nil {
+		return nil, err
+	}
+	p := c.Pal
+
+	d := &PlayerDetail{
+		UID:    c.PlayerUID.String(),
+		Name:   p.Nickname(),
+		Level:  p.Level(),
+		Exp:    p.Exp(),
+		Unused: p.UnusedStatusPoint(),
+		Stats:  describeStats(p, palsave.StatusPointList),
+		Ex:     describeStats(p, palsave.ExStatusPointList),
+	}
+	return d, nil
+}
+
+// describeStats lists a status track in the game's order, then anything the
+// save holds that the table does not know about.
+func describeStats(p *palsave.Pal, list string) []StatInfo {
+	have := p.StatusPoints(list)
+	if len(have) == 0 {
+		return nil
+	}
+
+	var out []StatInfo
+	seen := map[string]bool{}
+	for _, sp := range paldata.StatusPoints() {
+		v, ok := have[sp.ID]
+		if !ok {
+			continue
+		}
+		seen[sp.ID] = true
+		out = append(out, StatInfo{Key: sp.ID, Name: sp.NameKO, Value: v, Known: true})
+	}
+	// Anything the label table missed still gets shown, under its raw key.
+	for _, key := range p.StatusPointOrder(list) {
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		name, known := paldata.StatusPointName(key)
+		if !known {
+			name = key
+		}
+		out = append(out, StatInfo{Key: key, Name: name, Value: have[key], Known: known})
+	}
+	return out
+}
+
+func (a *App) findPlayer(uid string) (*palsave.CharEntry, error) {
+	if a.world == nil {
+		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	id, err := gvas.ParseGUID(uid)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range a.world.Players() {
+		if c.PlayerUID == id {
+			return c, nil
+		}
+	}
+	return nil, fmt.Errorf("플레이어를 찾을 수 없습니다: %s", uid)
+}
+
+// SetPlayerLevel sets a player's level, keeping experience consistent.
+//
+// Players use the same level curve as pals — the save stores Level and Exp
+// identically on both — so this reuses the pal setter.
+func (a *App) SetPlayerLevel(uid string, level int) error {
+	c, err := a.findPlayer(uid)
+	if err != nil {
+		return err
+	}
+	exp, ok := palsave.TotalPalExpForLevel(level)
+	if !ok {
+		return fmt.Errorf("레벨 %d 는 범위를 벗어납니다 (1-%d)", level, palsave.MaxPalLevel)
+	}
+	return c.Pal.SetLevelWithExp(level, exp)
+}
+
+// SetPlayerUnusedPoints sets the unspent status point pool.
+func (a *App) SetPlayerUnusedPoints(uid string, n int) error {
+	c, err := a.findPlayer(uid)
+	if err != nil {
+		return err
+	}
+	return c.Pal.SetUnusedStatusPoint(n)
+}
+
+// SetPlayerStat sets one status point entry.
+//
+// track is "" or "ex". The key is written into the save verbatim, so it is
+// checked against what the player already has rather than accepted blind —
+// an invented key would add a status the game does not read.
+func (a *App) SetPlayerStat(uid, track, key string, value int) error {
+	c, err := a.findPlayer(uid)
+	if err != nil {
+		return err
+	}
+	list := palsave.StatusPointList
+	if track == "ex" {
+		list = palsave.ExStatusPointList
+	}
+
+	known := false
+	for _, k := range c.Pal.StatusPointOrder(list) {
+		if k == key {
+			known = true
+			break
+		}
+	}
+	if !known {
+		if _, ok := paldata.StatusPointName(key); !ok {
+			return fmt.Errorf("알 수 없는 스테이터스입니다: %s", key)
+		}
+	}
+	return c.Pal.SetStatusPoint(list, key, value)
+}
+
 // --- inventory ------------------------------------------------------------
 
 // ItemInfo is one inventory stack as the UI shows it.

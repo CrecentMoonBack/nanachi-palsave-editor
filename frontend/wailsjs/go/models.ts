@@ -165,6 +165,66 @@ export namespace main {
 		}
 	}
 	
+	export class StatInfo {
+	    key: string;
+	    name: string;
+	    value: number;
+	    known: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StatInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.name = source["name"];
+	        this.value = source["value"];
+	        this.known = source["known"];
+	    }
+	}
+	export class PlayerDetail {
+	    uid: string;
+	    name: string;
+	    level: number;
+	    exp: number;
+	    unused: number;
+	    stats: StatInfo[];
+	    ex: StatInfo[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PlayerDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.uid = source["uid"];
+	        this.name = source["name"];
+	        this.level = source["level"];
+	        this.exp = source["exp"];
+	        this.unused = source["unused"];
+	        this.stats = this.convertValues(source["stats"], StatInfo);
+	        this.ex = this.convertValues(source["ex"], StatInfo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PlayerInfo {
 	    uid: string;
 	    name: string;
@@ -283,6 +343,7 @@ export namespace main {
 	        this.maxLevel = source["maxLevel"];
 	    }
 	}
+	
 	export class Status {
 	    codecOk: boolean;
 	    codecError: string;

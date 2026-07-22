@@ -1006,3 +1006,9 @@ button.tiny {
 .field-group-wrap.off .hint {
   color: var(--muted);
 }
+
+/* player tab ------------------------------------------------------------ */
+
+.editor.wide {
+  max-width: 100%;
+}

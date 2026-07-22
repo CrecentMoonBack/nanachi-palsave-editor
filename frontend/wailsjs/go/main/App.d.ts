@@ -23,6 +23,8 @@ export function Pals(arg1:string):Promise<Array<main.PalInfo>>;
 
 export function PickSaveFile():Promise<string>;
 
+export function PlayerDetail(arg1:string):Promise<main.PlayerDetail>;
+
 export function Players():Promise<Array<main.PlayerInfo>>;
 
 export function Presets():Promise<Array<main.PresetInfo>>;
@@ -48,6 +50,12 @@ export function SetPalRankBonus(arg1:string,arg2:string,arg3:number):Promise<voi
 export function SetPalTalent(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function SetPalWorkSuitability(arg1:string,arg2:string,arg3:number):Promise<void>;
+
+export function SetPlayerLevel(arg1:string,arg2:number):Promise<void>;
+
+export function SetPlayerStat(arg1:string,arg2:string,arg3:string,arg4:number):Promise<void>;
+
+export function SetPlayerUnusedPoints(arg1:string,arg2:number):Promise<void>;
 
 export function Status():Promise<main.Status>;
 

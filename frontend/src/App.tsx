@@ -13,6 +13,10 @@ import {
   SaveToDisk,
   SearchItems,
   SearchPassives,
+  PlayerDetail,
+  SetPlayerLevel,
+  SetPlayerUnusedPoints,
+  SetPlayerStat,
   Presets,
   SavePreset,
   DeletePreset,
@@ -27,7 +31,7 @@ import {
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
 
-type Tab = "pals" | "items";
+type Tab = "pals" | "items" | "player";
 
 /**
  * The save property names behind each editable stat, paired with the label to
@@ -222,12 +226,30 @@ export default function App() {
                   >
                     인벤토리 {items.length}
                   </button>
+                  <button
+                    className={`tab ${tab === "player" ? "active" : ""}`}
+                    onClick={() => setTab("player")}
+                  >
+                    플레이어
+                  </button>
                 </div>
 
                 {tab === "pals" ? (
                   <PalsTab
                     uid={uid}
                     camps={camps}
+                    status={status}
+                    busy={busy}
+                    setBusy={setBusy}
+                    say={say}
+                    onChanged={async () => {
+                      setDirty(true);
+                      await refresh();
+                    }}
+                  />
+                ) : tab === "player" ? (
+                  <PlayerTab
+                    uid={uid}
                     status={status}
                     busy={busy}
                     setBusy={setBusy}
@@ -1415,6 +1437,196 @@ function PresetManager({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The player's own numbers: level and the two status point tracks.
+ *
+ * No max button here, unlike the pal editor. The per-status cap is not known —
+ * observed values run to 20 on the ordinary track and 40 on the Ex one — and a
+ * max button built on a guessed cap is exactly what lowered a pal's souls from
+ * 20 to 10. Type a number instead.
+ */
+function PlayerTab({
+  uid,
+  status,
+  busy,
+  setBusy,
+  say,
+  onChanged,
+}: {
+  uid: string;
+  status: main.Status | null;
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  say: (m: string, bad?: boolean) => void;
+  onChanged: () => Promise<void>;
+}) {
+  const maxLevel = status?.maxLevel ?? 80;
+
+  const [detail, setDetail] = useState<main.PlayerDetail | null>(null);
+  const [level, setLevel] = useState(1);
+  const [unused, setUnused] = useState(0);
+  const [stats, setStats] = useState<Record<string, number>>({});
+  const [ex, setEx] = useState<Record<string, number>>({});
+
+  const load = useCallback(async () => {
+    if (!uid) return;
+    try {
+      const d = await PlayerDetail(uid);
+      setDetail(d);
+      setLevel(d.level);
+      setUnused(d.unused);
+      setStats(Object.fromEntries((d.stats ?? []).map((s) => [s.key, s.value])));
+      setEx(Object.fromEntries((d.ex ?? []).map((s) => [s.key, s.value])));
+    } catch (e: any) {
+      say(String(e), true);
+    }
+  }, [uid, say]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function apply() {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      await SetPlayerLevel(uid, level);
+      await SetPlayerUnusedPoints(uid, unused);
+      for (const s of detail.stats ?? []) {
+        const next = stats[s.key] ?? 0;
+        if (next !== s.value) await SetPlayerStat(uid, "", s.key, next);
+      }
+      for (const s of detail.ex ?? []) {
+        const next = ex[s.key] ?? 0;
+        if (next !== s.value) await SetPlayerStat(uid, "ex", s.key, next);
+      }
+      say(`${detail.name} 수정됨 · Lv${level}`);
+      await onChanged();
+      await load();
+    } catch (e: any) {
+      say(String(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!detail) return <div className="empty">불러오는 중…</div>;
+
+  const spent = Object.values(stats).reduce((a, b) => a + b, 0);
+
+  return (
+    <div className="editor wide">
+      <div className="editor-head">
+        <div className="info">
+          <div className="title">{detail.name}</div>
+          <div className="sub">
+            투자한 포인트 {spent} · 남은 포인트 {unused}
+          </div>
+        </div>
+      </div>
+
+      <div className="field-group">
+        <div className="group-title">
+          레벨 <span className="range">1–{maxLevel}</span>
+        </div>
+        <div className="hint">경험치도 그 레벨에 맞춰 함께 바뀝니다.</div>
+        <div className="field-row">
+          <input
+            type="number"
+            min={1}
+            max={maxLevel}
+            value={level}
+            onChange={(e) => setLevel(Number(e.target.value))}
+          />
+          <input
+            type="range"
+            min={1}
+            max={maxLevel}
+            value={level}
+            onChange={(e) => setLevel(Number(e.target.value))}
+          />
+        </div>
+      </div>
+
+      <div className="field-group">
+        <div className="group-title">남은 스테이터스 포인트</div>
+        <div className="hint">
+          아직 투자하지 않은 포인트입니다. 게임에서 원하는 항목에 나눠 넣을 수
+          있습니다.
+        </div>
+        <div className="field-row">
+          <input
+            type="number"
+            min={0}
+            value={unused}
+            onChange={(e) => setUnused(Number(e.target.value))}
+          />
+        </div>
+      </div>
+
+      <div className="field-group">
+        <div className="group-title">스테이터스</div>
+        <div className="hint">
+          레벨업으로 얻은 포인트를 넣은 값입니다. <b>상한은 아직 확인하지
+          못했습니다</b> — 이 세이브에서 관측된 최대는 20입니다. 게임이 받아들이지
+          않는 값을 넣으면 되돌려지거나 무시될 수 있습니다.
+        </div>
+        <div className="work-grid">
+          {(detail.stats ?? []).map((s) => (
+            <label key={s.key} className="work-row">
+              <span className="work-name" title={s.known ? s.key : "알 수 없는 항목"}>
+                {s.name}
+                {!s.known && <span className="badge warn">?</span>}
+              </span>
+              <input
+                type="number"
+                min={0}
+                value={stats[s.key] ?? 0}
+                onChange={(e) =>
+                  setStats({ ...stats, [s.key]: Number(e.target.value) })
+                }
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {(detail.ex ?? []).length > 0 && (
+        <div className="field-group">
+          <div className="group-title">추가 스테이터스</div>
+          <div className="hint">
+            일반 스테이터스와 별개로 쌓이는 값입니다. 관측된 최대는 40으로 위쪽
+            목록보다 훨씬 높아, 같은 척도가 아닙니다. <b>상한은 확인하지
+            못했습니다.</b>
+          </div>
+          <div className="work-grid">
+            {(detail.ex ?? []).map((s) => (
+              <label key={s.key} className="work-row">
+                <span className="work-name" title={s.known ? s.key : "알 수 없는 항목"}>
+                  {s.name}
+                  {!s.known && <span className="badge warn">?</span>}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  value={ex[s.key] ?? 0}
+                  onChange={(e) =>
+                    setEx({ ...ex, [s.key]: Number(e.target.value) })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button className="primary apply" onClick={apply} disabled={busy}>
+        플레이어에 적용
+      </button>
     </div>
   );
 }

@@ -42,6 +42,10 @@ export function PickSaveFile() {
   return window['go']['main']['App']['PickSaveFile']();
 }
 
+export function PlayerDetail(arg1) {
+  return window['go']['main']['App']['PlayerDetail'](arg1);
+}
+
 export function Players() {
   return window['go']['main']['App']['Players']();
 }
@@ -92,6 +96,18 @@ export function SetPalTalent(arg1, arg2, arg3) {
 
 export function SetPalWorkSuitability(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetPalWorkSuitability'](arg1, arg2, arg3);
+}
+
+export function SetPlayerLevel(arg1, arg2) {
+  return window['go']['main']['App']['SetPlayerLevel'](arg1, arg2);
+}
+
+export function SetPlayerStat(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetPlayerStat'](arg1, arg2, arg3, arg4);
+}
+
+export function SetPlayerUnusedPoints(arg1, arg2) {
+  return window['go']['main']['App']['SetPlayerUnusedPoints'](arg1, arg2);
 }
 
 export function Status() {
