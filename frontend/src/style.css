@@ -1132,3 +1132,26 @@ button.tiny {
 .editor.wide {
   max-width: 100%;
 }
+
+/* --- add pal ------------------------------------------------------------ */
+
+.add-pal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Scrolls on its own so the form below stays reachable however many species
+   the search turns up. */
+.pal-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.hint.bad {
+  color: var(--danger);
+}

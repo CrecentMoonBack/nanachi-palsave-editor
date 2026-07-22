@@ -75,6 +75,31 @@ func (p *Properties) Set(name string, v Property) {
 	p.Values[name] = v
 }
 
+// Delete removes a property, keeping the order of the rest.
+//
+// The game omits a property entirely when it holds the default, so removing
+// one is a real edit rather than a cleanup — see the note about Level in
+// palsave.
+func (p *Properties) Delete(name string) {
+	if p == nil || p.Values == nil {
+		return
+	}
+	if _, ok := p.Values[name]; !ok {
+		return
+	}
+	delete(p.Values, name)
+	for i, n := range p.Names {
+		if n.Value == name {
+			p.Names = append(p.Names[:i], p.Names[i+1:]...)
+			// types runs parallel to Names, so it has to lose the same slot.
+			if i < len(p.types) {
+				p.types = append(p.types[:i], p.types[i+1:]...)
+			}
+			break
+		}
+	}
+}
+
 // Len is the number of properties.
 func (p *Properties) Len() int {
 	if p == nil {

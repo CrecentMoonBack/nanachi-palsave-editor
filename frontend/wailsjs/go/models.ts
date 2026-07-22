@@ -52,6 +52,22 @@ export namespace main {
 	        this.icon = source["icon"];
 	    }
 	}
+	export class PalChoice {
+	    id: string;
+	    name: string;
+	    icon: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PalChoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.icon = source["icon"];
+	    }
+	}
 	export class WorkInfo {
 	    id: string;
 	    name: string;

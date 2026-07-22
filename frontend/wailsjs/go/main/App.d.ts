@@ -3,6 +3,8 @@
 import {main} from '../models';
 import {paldata} from '../models';
 
+export function AddPal(arg1:string,arg2:string,arg3:number,arg4:number,arg5:Record<string, number>,arg6:Array<string>):Promise<string>;
+
 export function ApplyPreset(arg1:string,arg2:string):Promise<Array<main.PassiveInfo>>;
 
 export function BaseCamps(arg1:string):Promise<Array<main.CampInfo>>;
@@ -23,6 +25,8 @@ export function OpenSave(arg1:string):Promise<main.SaveInfo>;
 
 export function PalSpecies(arg1:string):Promise<Array<main.SpeciesSummary>>;
 
+export function PalboxSpace(arg1:string):Promise<number>;
+
 export function Pals(arg1:string):Promise<Array<main.PalInfo>>;
 
 export function PickSaveFile():Promise<string>;
@@ -40,6 +44,8 @@ export function SavePreset(arg1:string,arg2:Array<string>):Promise<void>;
 export function SaveToDisk():Promise<main.SaveResult>;
 
 export function SearchItems(arg1:string):Promise<Array<main.ItemChoice>>;
+
+export function SearchPals(arg1:string):Promise<Array<main.PalChoice>>;
 
 export function SearchPassives(arg1:string):Promise<Array<main.PassiveInfo>>;
 

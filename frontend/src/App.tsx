@@ -23,6 +23,9 @@ import {
   SaveToDisk,
   SearchItems,
   SearchPassives,
+  SearchPals,
+  AddPal,
+  PalboxSpace,
   PlayerDetail,
   SetPlayerLevel,
   SetPlayerUnusedPoints,
@@ -440,6 +443,7 @@ function PalsTab({
   const [presets, setPresets] = useState<main.PresetInfo[]>([]);
   const [presetPick, setPresetPick] = useState("");
   const [managing, setManaging] = useState(false);
+  const [adding, setAdding] = useState(false);
   // Instance ids ticked for bulk work. A Set so toggling one row does not
   // rebuild an array of a few hundred entries.
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -669,7 +673,23 @@ function PalsTab({
         <button className="ghost" onClick={() => setManaging(true)}>
           프리셋 관리
         </button>
+
+        <span className="tb-sep" />
+
+        <button onClick={() => setAdding(true)} title="가지고 있지 않은 팰을 팰박스에 새로 만들어 넣습니다">
+          팰 추가
+        </button>
       </div>
+
+      {adding && (
+        <AddPalDialog
+          uid={uid}
+          status={status}
+          onClose={() => setAdding(false)}
+          say={say}
+          onAdded={onChanged}
+        />
+      )}
 
       {managing && (
         <PresetManager
@@ -2070,6 +2090,202 @@ function StackEditor({
         >
           비우기
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Creates a pal the player does not own and puts it in their palbox.
+ *
+ * Species, level, condensation and IVs are offered; passives are left to the
+ * per-pal editor afterwards, so this form stays short. The Go side clones an
+ * existing record and replaces what it understands, which is what produces a
+ * save the game accepts.
+ */
+function AddPalDialog({
+  uid,
+  status,
+  onClose,
+  say,
+  onAdded,
+}: {
+  uid: string;
+  status: main.Status | null;
+  onClose: () => void;
+  say: (m: string, bad?: boolean) => void;
+  onAdded: () => Promise<void>;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<main.PalChoice[]>([]);
+  const [chosen, setChosen] = useState<main.PalChoice | null>(null);
+  const [level, setLevel] = useState(1);
+  const [rank, setRank] = useState(1);
+  const [count, setCount] = useState(1);
+  const [talents, setTalents] = useState<Record<string, number>>({});
+  const [space, setSpace] = useState<number | null>(null);
+  const [working, setWorking] = useState(false);
+
+  const maxLevel = status?.maxLevel ?? 80;
+  const maxRank = status?.maxRank ?? 5;
+  const maxTalent = status?.maxTalent ?? 100;
+
+  useEffect(() => {
+    PalboxSpace(uid)
+      .then(setSpace)
+      .catch(() => setSpace(null));
+  }, [uid]);
+
+  useEffect(() => {
+    let live = true;
+    SearchPals(query).then((r) => live && setResults(r));
+    return () => {
+      live = false;
+    };
+  }, [query]);
+
+  const room = space ?? 0;
+  const tooMany = space !== null && count > room;
+
+  async function create() {
+    if (!chosen) return;
+    setWorking(true);
+    try {
+      for (let i = 0; i < count; i++) {
+        await AddPal(uid, chosen.id, level, rank, talents, []);
+      }
+      say(`${chosen.name} ${count}마리를 팰박스에 넣었습니다`);
+      await onAdded();
+      onClose();
+    } catch (e: any) {
+      say(String(e), true);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="modal-title">팰 추가</span>
+          <button className="ghost" onClick={onClose}>
+            닫기
+          </button>
+        </div>
+
+        <div className="modal-body add-pal">
+          <div className="hint">
+            가지고 있지 않은 팰을 <b>팰박스</b>에 새로 만들어 넣습니다.
+            {space !== null && ` 남은 칸 ${room.toLocaleString()}개.`}
+          </div>
+
+          <input
+            type="text"
+            placeholder="팰 검색 (한글/영문)"
+            value={query}
+            autoFocus
+            onChange={(e) => setQuery(e.target.value)}
+          />
+
+          <div className="pal-picker">
+            {results.length === 0 && (
+              <div className="empty">검색 결과가 없습니다.</div>
+            )}
+            {results.map((p) => (
+              <button
+                key={p.id}
+                className={`card ${chosen?.id === p.id ? "picked" : ""}`}
+                onClick={() => setChosen(p)}
+              >
+                <Icon file={p.icon} alt={p.name} />
+                <div className="info">
+                  <div className="title">{p.name}</div>
+                  {/* Several entries share a Korean name — the tower bosses
+                      come as a trainer-and-pal pair per difficulty — so the
+                      game's own id is what tells them apart. */}
+                  <div className="sub">{p.id}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="stat-grid">
+            <label>
+              <span>
+                레벨 <span className="range">1–{maxLevel}</span>
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={maxLevel}
+                value={level}
+                onChange={(e) => setLevel(Number(e.target.value))}
+              />
+            </label>
+            <label>
+              <span>
+                응축 <span className="range">1–{maxRank}</span>
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={maxRank}
+                value={rank}
+                onChange={(e) => setRank(Number(e.target.value))}
+              />
+            </label>
+            <label>
+              <span>마리 수</span>
+              <input
+                type="number"
+                min={1}
+                value={count}
+                onChange={(e) => setCount(Number(e.target.value))}
+              />
+            </label>
+          </div>
+
+          <div className="section-title">
+            개체값 <span className="range">0–{maxTalent}</span>
+          </div>
+          <div className="stat-grid">
+            {TALENTS.map((t) => (
+              <label key={t.prop}>
+                <span>{t.label}</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={maxTalent}
+                  value={talents[t.prop] ?? 0}
+                  onChange={(e) =>
+                    setTalents({ ...talents, [t.prop]: Number(e.target.value) })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+
+          {tooMany && (
+            <div className="hint bad">
+              팰박스에 {room.toLocaleString()}칸밖에 없습니다.
+            </div>
+          )}
+
+          <div className="stack-actions">
+            <button
+              className="primary"
+              disabled={working || !chosen || count < 1 || tooMany}
+              onClick={create}
+            >
+              {chosen ? `${chosen.name} ${count}마리 추가` : "팰을 고르세요"}
+            </button>
+          </div>
+
+          <div className="hint">
+            패시브는 추가한 뒤 개별 편집 화면에서 붙이면 됩니다.
+          </div>
+        </div>
       </div>
     </div>
   );

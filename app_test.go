@@ -520,3 +520,153 @@ func mustGUID(t *testing.T, s string) gvas.GUID {
 	}
 	return g
 }
+
+// TestAddPalSurvivesSaveAndReopen is the test the whole feature rests on.
+//
+// Every in-memory check can pass while the encoder drops the new map entry, so
+// this writes the file and opens it with a fresh App. It adds several pals at
+// once because the failure being guarded against — every new slot entry
+// inheriting the donor's SlotIndex — only shows up with more than one: the
+// game keeps a single pal at the contested slot and deletes the rest, along
+// with whatever was already there.
+func TestAddPalSurvivesSaveAndReopen(t *testing.T) {
+	if err := oodle.Available(); err != nil {
+		t.Skipf("native codec unavailable: %v", err)
+	}
+	level := copyFixture(t)
+
+	a := NewApp()
+	if _, err := a.OpenSave(level); err != nil {
+		t.Fatal(err)
+	}
+	players, err := a.Players()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A player whose palbox we can reach and that has room.
+	var uid, name string
+	for _, p := range players {
+		if n, err := a.PalboxSpace(p.UID); err == nil && n > 10 {
+			uid, name = p.UID, p.Name
+			break
+		}
+	}
+	if uid == "" {
+		t.Skip("no player with a reachable palbox that has room")
+	}
+
+	beforeIDs := map[string]bool{}
+	for _, c := range a.world.Chars() {
+		beforeIDs[c.InstanceID.String()] = true
+	}
+	beforeSpace, _ := a.PalboxSpace(uid)
+
+	const n = 5
+	want := map[string]bool{}
+	for i := 0; i < n; i++ {
+		id, err := a.AddPal(uid, "SheepBall", 30, 3,
+			map[string]int{"Talent_HP": 80}, nil)
+		if err != nil {
+			t.Fatalf("AddPal %d: %v", i, err)
+		}
+		want[id] = true
+	}
+	if len(want) != n {
+		t.Fatalf("only %d distinct instance ids from %d adds", len(want), n)
+	}
+	if got, _ := a.PalboxSpace(uid); got != beforeSpace-n {
+		t.Errorf("palbox space went %d -> %d, want %d", beforeSpace, got, beforeSpace-n)
+	}
+
+	if _, err := a.SaveToDisk(); err != nil {
+		t.Fatalf("SaveToDisk: %v", err)
+	}
+
+	// Fresh process-equivalent: read back what actually landed on disk.
+	b := NewApp()
+	if _, err := b.OpenSave(level); err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+
+	afterIDs := map[string]bool{}
+	slotOf := map[string]int32{}
+	for _, c := range b.world.Chars() {
+		afterIDs[c.InstanceID.String()] = true
+	}
+	for id := range beforeIDs {
+		if !afterIDs[id] {
+			t.Errorf("pal %s was lost across save and reopen", id)
+		}
+	}
+	for id := range want {
+		if !afterIDs[id] {
+			t.Errorf("added pal %s did not survive save and reopen", id)
+		}
+	}
+
+	// Every slot in the palbox must still be claimed by exactly one entry.
+	pf := b.players[uid]
+	box, _ := pf.save.PalStorageContainer()
+	c, ok := b.world.PalContainerByID(box)
+	if !ok {
+		t.Fatal("palbox missing after reopen")
+	}
+	seen := map[int32]bool{}
+	for _, s := range c.Slots {
+		if seen[s.Index] {
+			t.Errorf("after reopen, slot %d is claimed twice", s.Index)
+		}
+		seen[s.Index] = true
+		if s.Slot != nil {
+			slotOf[s.Slot.InstanceID.String()] = s.Index
+		}
+	}
+	for id := range want {
+		if _, ok := slotOf[id]; !ok {
+			t.Errorf("added pal %s has no slot entry after reopen", id)
+		}
+	}
+
+	// And the pals must read back as what was asked for.
+	for _, ch := range b.world.Chars() {
+		if !want[ch.InstanceID.String()] {
+			continue
+		}
+		if got := ch.Pal.CharacterID(); got != "SheepBall" {
+			t.Errorf("%s: species %q after reopen", ch.InstanceID, got)
+		}
+		if got := ch.Pal.Level(); got != 30 {
+			t.Errorf("%s: level %d after reopen, want 30", ch.InstanceID, got)
+		}
+		if got := ch.Pal.Rank(); got != 3 {
+			t.Errorf("%s: rank %d after reopen, want 3", ch.InstanceID, got)
+		}
+	}
+	t.Logf("%s: added %d pals, %d characters before, %d after",
+		name, n, len(beforeIDs), len(afterIDs))
+}
+
+// The species picker opens on whatever SearchPals returns first, so ordinary
+// pals have to come before the tower and raid bosses. Several tower bosses
+// share a Korean name, and an unsorted list opens on a wall of them.
+func TestSearchPalsPutsOrdinaryPalsFirst(t *testing.T) {
+	a := NewApp()
+	got := a.SearchPals("")
+	if len(got) < 10 {
+		t.Fatalf("only %d results for an empty query", len(got))
+	}
+	for i, c := range got[:10] {
+		p, ok := paldata.LookupPal(c.ID)
+		if !ok {
+			t.Errorf("result %d (%s) is not in the pal table", i, c.ID)
+			continue
+		}
+		if p.IsTowerBoss || p.IsRaidBoss {
+			t.Errorf("result %d is a boss (%s); ordinary pals must come first", i, c.ID)
+		}
+		if !p.IsPal {
+			t.Errorf("result %d (%s) is not a pal", i, c.ID)
+		}
+	}
+}

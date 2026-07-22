@@ -1,0 +1,314 @@
+//go:build windows
+
+package palsave
+
+import (
+	"testing"
+
+	"github.com/CrecentMoonBack/nanachi-palsave-editor/internal/gvas"
+)
+
+// palboxOf finds a player and their palbox: the container their existing pals
+// are actually kept in.
+func palboxOf(t *testing.T, w *World) (gvas.GUID, *PalContainer) {
+	t.Helper()
+	for _, p := range w.Players() {
+		owned := w.PalsOwnedBy(p.PlayerUID)
+		counts := map[gvas.GUID]int{}
+		for _, pal := range owned {
+			if cid, ok := pal.Pal.ContainerID(); ok {
+				counts[cid]++
+			}
+		}
+		var best gvas.GUID
+		n := 0
+		for cid, c := range counts {
+			if c > n {
+				best, n = cid, c
+			}
+		}
+		if n == 0 {
+			continue
+		}
+		if c, ok := w.PalContainerByID(best); ok && c.Capacity > int32(len(c.Slots)) {
+			return p.PlayerUID, c
+		}
+	}
+	t.Skip("no player with a palbox that has room")
+	return gvas.GUID{}, nil
+}
+
+// The failure this guards against deletes pals. Adding several in a row used
+// to leave exactly one alive, always at the same slot, because each new slot
+// entry inherited the donor's SlotIndex and the game resolved the collision by
+// throwing the others away — along with whatever already sat there.
+//
+// Counting is not enough to catch that, so this compares the *set* of instance
+// ids before and after: every pal that existed must still exist.
+func TestAddPalKeepsEveryExistingPal(t *testing.T) {
+	w := loadLevelWorld(t)
+	owner, box := palboxOf(t, w)
+
+	before := map[gvas.GUID]bool{}
+	for _, c := range w.Chars() {
+		before[c.InstanceID] = true
+	}
+	beforeSlots := len(box.Slots)
+
+	const n = 5
+	added := map[gvas.GUID]bool{}
+	indices := map[int32]bool{}
+	for i := 0; i < n; i++ {
+		id, err := w.AddPal(NewPalSpec{
+			SpeciesID: "SheepBall",
+			Level:     10,
+			Rank:      1,
+			Owner:     owner,
+			Container: box.ID,
+		})
+		if err != nil {
+			t.Fatalf("AddPal %d: %v", i, err)
+		}
+		if added[id] {
+			t.Fatalf("AddPal returned instance id %v twice", id)
+		}
+		added[id] = true
+	}
+
+	// Re-read the container: the slots we just wrote have to be visible.
+	box, ok := w.PalContainerByID(box.ID)
+	if !ok {
+		t.Fatal("the palbox vanished")
+	}
+	if got := len(box.Slots) - beforeSlots; got != n {
+		t.Errorf("container gained %d slots, want %d", got, n)
+	}
+
+	// No two slots may claim the same number. This is the actual bug.
+	for _, s := range box.Slots {
+		if indices[s.Index] {
+			t.Errorf("slot index %d is claimed twice", s.Index)
+		}
+		indices[s.Index] = true
+	}
+
+	after := map[gvas.GUID]bool{}
+	for _, c := range w.Chars() {
+		after[c.InstanceID] = true
+	}
+	for id := range before {
+		if !after[id] {
+			t.Errorf("pal %v disappeared when pals were added", id)
+		}
+	}
+	for id := range added {
+		if !after[id] {
+			t.Errorf("newly added pal %v is not in the save", id)
+		}
+	}
+}
+
+// The slot entry and the pal's own SlotId have to agree. If they drift, the
+// game trusts one of them and the pal is either invisible or fighting for a
+// slot that belongs to somebody else.
+func TestAddPalWritesTheSameSlotIndexInBothPlaces(t *testing.T) {
+	w := loadLevelWorld(t)
+	owner, box := palboxOf(t, w)
+
+	id, err := w.AddPal(NewPalSpec{
+		SpeciesID: "SheepBall",
+		Level:     1,
+		Rank:      1,
+		Owner:     owner,
+		Container: box.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var slotIdx int32 = -1
+	box, _ = w.PalContainerByID(box.ID)
+	for _, s := range box.Slots {
+		if s.Slot != nil && s.Slot.InstanceID == id {
+			slotIdx = s.Index
+		}
+	}
+	if slotIdx < 0 {
+		t.Fatal("the new pal has no slot entry in the container")
+	}
+
+	for _, c := range w.Chars() {
+		if c.InstanceID != id {
+			continue
+		}
+		got, ok := palSlotIndex(c.Pal)
+		if !ok {
+			t.Fatal("the new pal has no SlotId")
+		}
+		if got != slotIdx {
+			t.Errorf("slot entry says %d, the pal's own SlotId says %d", slotIdx, got)
+		}
+		cid, _ := c.Pal.ContainerID()
+		if cid != box.ID {
+			t.Errorf("the pal points at container %v, want %v", cid, box.ID)
+		}
+		return
+	}
+	t.Fatal("the new pal is not in the character map")
+}
+
+// palSlotIndex reads a pal's own idea of which slot it is in.
+func palSlotIndex(p *Pal) (int32, bool) {
+	v, ok := p.Params().Get("SlotId")
+	if !ok {
+		return 0, false
+	}
+	sp, ok := v.(*gvas.StructProperty)
+	if !ok {
+		return 0, false
+	}
+	inner, ok := sp.Value.(*gvas.StructProperties)
+	if !ok {
+		return 0, false
+	}
+	iv, ok := inner.Props.Get("SlotIndex")
+	if !ok {
+		return 0, false
+	}
+	ip, ok := iv.(*gvas.IntProperty)
+	if !ok {
+		return 0, false
+	}
+	return ip.Value, true
+}
+
+// The free slot must come from the slot entries. A pal that has left the box
+// keeps a stale SlotId pointing back into it, so deriving free slots from the
+// pals would skip numbers that are actually empty — and, worse, could hand out
+// one that is occupied.
+func TestFreeSlotIndexIsNotTakenFromPals(t *testing.T) {
+	w := loadLevelWorld(t)
+	_, box := palboxOf(t, w)
+
+	free, ok := box.FreeSlotIndex()
+	if !ok {
+		t.Skip("palbox is full")
+	}
+	for _, s := range box.Slots {
+		if s.Index == free {
+			t.Fatalf("FreeSlotIndex returned %d, which a slot entry already holds", free)
+		}
+	}
+	if free >= box.Capacity {
+		t.Errorf("FreeSlotIndex returned %d, beyond capacity %d", free, box.Capacity)
+	}
+}
+
+// A pal is only owned once the guild roster knows about it.
+func TestAddPalRegistersInTheGuild(t *testing.T) {
+	w := loadLevelWorld(t)
+	owner, box := palboxOf(t, w)
+
+	g, ok := w.GuildOf(owner)
+	if !ok {
+		t.Skip("that player is in no guild")
+	}
+	before := len(g.Members)
+
+	if _, err := w.AddPal(NewPalSpec{
+		SpeciesID: "SheepBall",
+		Level:     1,
+		Rank:      1,
+		Owner:     owner,
+		Container: box.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	g2, ok := w.GuildOf(owner)
+	if !ok {
+		t.Fatal("the guild stopped parsing after a pal was added")
+	}
+	// The roster is re-read from the blob, so a broken rewrite shows up as a
+	// parse failure or a lost member rather than a silent no-op.
+	if len(g2.Members) < before {
+		t.Errorf("guild went from %d members to %d", before, len(g2.Members))
+	}
+	if g2.ID != g.ID {
+		t.Errorf("guild id changed from %v to %v", g.ID, g2.ID)
+	}
+}
+
+// The new pal has to be a pal: the donor's identity must not survive the copy.
+func TestAddPalTakesTheRequestedShapeNotTheDonors(t *testing.T) {
+	w := loadLevelWorld(t)
+	owner, box := palboxOf(t, w)
+
+	id, err := w.AddPal(NewPalSpec{
+		SpeciesID: "SheepBall",
+		Level:     42,
+		Rank:      4,
+		Talents:   map[string]int{"Talent_HP": 90},
+		Owner:     owner,
+		Container: box.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range w.Chars() {
+		if c.InstanceID != id {
+			continue
+		}
+		p := c.Pal
+		if got := p.CharacterID(); got != "SheepBall" {
+			t.Errorf("species is %q, want SheepBall", got)
+		}
+		if got := p.Level(); got != 42 {
+			t.Errorf("level is %d, want 42", got)
+		}
+		if got := p.Rank(); got != 4 {
+			t.Errorf("rank is %d, want 4", got)
+		}
+		if got := p.Talent("Talent_HP"); got != 90 {
+			t.Errorf("Talent_HP is %d, want 90", got)
+		}
+		if o, ok := p.OwnerPlayerUID(); !ok || o != owner {
+			t.Errorf("owner is %v, want %v", o, owner)
+		}
+		// Moves belong to the donor's species and must not come along.
+		if p.Params().Has("EquipWaza") || p.Params().Has("MasteredWaza") {
+			t.Error("the donor's moves survived the copy")
+		}
+		if p.Params().Has("NickName") {
+			t.Error("the donor's nickname survived the copy")
+		}
+		return
+	}
+	t.Fatal("the new pal is not in the character map")
+}
+
+// Bad input must be refused rather than written.
+func TestAddPalRejectsBadInput(t *testing.T) {
+	w := loadLevelWorld(t)
+	owner, box := palboxOf(t, w)
+
+	cases := []struct {
+		name string
+		spec NewPalSpec
+	}{
+		{"no species", NewPalSpec{Rank: 1, Owner: owner, Container: box.ID}},
+		{"rank 0", NewPalSpec{SpeciesID: "SheepBall", Rank: 0, Owner: owner, Container: box.ID}},
+		{"rank 6", NewPalSpec{SpeciesID: "SheepBall", Rank: 6, Owner: owner, Container: box.ID}},
+		{"unknown container", NewPalSpec{SpeciesID: "SheepBall", Rank: 1, Owner: owner}},
+		{"too many passives", NewPalSpec{
+			SpeciesID: "SheepBall", Rank: 1, Owner: owner, Container: box.ID,
+			Passives: []string{"a", "b", "c", "d", "e"},
+		}},
+	}
+	for _, tc := range cases {
+		if _, err := w.AddPal(tc.spec); err == nil {
+			t.Errorf("%s: expected an error", tc.name)
+		}
+	}
+}

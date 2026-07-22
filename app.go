@@ -610,6 +610,131 @@ func (a *App) BaseStorages(uid string) ([]StorageInfo, error) {
 	return out, nil
 }
 
+// AddPal creates a pal in the player's palbox and returns its instance id.
+//
+// Destination is the palbox rather than the party on purpose: the party has
+// five slots and is usually full, and a pal appearing in the box is what a
+// user expects from "add".
+func (a *App) AddPal(uid, speciesID string, level, rank int, talents map[string]int, passives []string) (string, error) {
+	if a.world == nil {
+		return "", fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	pf, ok := a.players[uid]
+	if !ok {
+		return "", fmt.Errorf("이 플레이어의 세이브 파일이 없습니다 (Players 폴더 확인)")
+	}
+	box, ok := pf.save.PalStorageContainer()
+	if !ok {
+		return "", fmt.Errorf("팰박스를 찾을 수 없습니다")
+	}
+	owner, ok := pf.save.PlayerUID()
+	if !ok {
+		return "", fmt.Errorf("플레이어 ID를 찾을 수 없습니다")
+	}
+
+	if _, ok := paldata.LookupPal(speciesID); !ok {
+		return "", fmt.Errorf("모르는 팰입니다: %s", speciesID)
+	}
+	if err := validatePassives(passives); err != nil {
+		return "", err
+	}
+	for name := range talents {
+		if !allowedTalent[name] {
+			return "", fmt.Errorf("수정할 수 없는 항목입니다: %s", name)
+		}
+	}
+
+	id, err := a.world.AddPal(palsave.NewPalSpec{
+		SpeciesID: speciesID,
+		Level:     level,
+		Rank:      rank,
+		Talents:   talents,
+		Passives:  passives,
+		Owner:     owner,
+		Container: box,
+	})
+	if err != nil {
+		return "", err
+	}
+	return id.String(), nil
+}
+
+// PalChoice is a searchable species, for the "add pal" picker.
+type PalChoice struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+}
+
+// SearchPals finds species by id or Korean name.
+//
+// Only real pals: the table also holds human NPCs and quest actors, and
+// putting a shopkeeper in someone's palbox is not what "add a pal" means.
+func (a *App) SearchPals(q string) []PalChoice {
+	found := paldata.SearchPals(q)
+
+	// Ordinary pals first, in the game's own Paldeck order, with the tower and
+	// raid bosses after them. Unsorted, the list opens on a wall of tower boss
+	// duos — several of which share a Korean name — which is not what anyone
+	// means by "add a pal".
+	ranked := make([]*paldata.Pal, 0, len(found))
+	for _, p := range found {
+		if p.IsPal {
+			ranked = append(ranked, p)
+		}
+	}
+	sort.SliceStable(ranked, func(i, j int) bool {
+		bi, bj := palRank(ranked[i]), palRank(ranked[j])
+		if bi != bj {
+			return bi < bj
+		}
+		if ranked[i].DeckIndex != ranked[j].DeckIndex {
+			return ranked[i].DeckIndex < ranked[j].DeckIndex
+		}
+		return ranked[i].ID < ranked[j].ID
+	})
+
+	out := make([]PalChoice, 0, 50)
+	for _, p := range ranked {
+		c := PalChoice{ID: p.ID, Name: p.ID}
+		if ko, ok := paldata.PalName(p.ID); ok {
+			c.Name = ko
+		}
+		for _, cand := range paldata.PalIconCandidates(p.ID) {
+			if icons.Has(cand) {
+				c.Icon = cand
+				break
+			}
+		}
+		out = append(out, c)
+		if len(out) >= 50 {
+			break
+		}
+	}
+	return out
+}
+
+// PalboxSpace reports how many free slots the player's palbox has, so the UI
+// can say so before the user fills in a form that cannot be applied.
+func (a *App) PalboxSpace(uid string) (int, error) {
+	if a.world == nil {
+		return 0, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	pf, ok := a.players[uid]
+	if !ok {
+		return 0, fmt.Errorf("이 플레이어의 세이브 파일이 없습니다")
+	}
+	box, ok := pf.save.PalStorageContainer()
+	if !ok {
+		return 0, fmt.Errorf("팰박스를 찾을 수 없습니다")
+	}
+	c, ok := a.world.PalContainerByID(box)
+	if !ok {
+		return 0, fmt.Errorf("팰박스 컨테이너를 찾을 수 없습니다")
+	}
+	return int(c.Capacity) - len(c.Slots), nil
+}
+
 // BasePals lists the pals working at the given player's guild's camps.
 func (a *App) BasePals(uid string) ([]PalInfo, error) {
 	if a.world == nil {
@@ -1434,4 +1559,17 @@ func (a *App) savePlayerFiles(stamp string) (int, error) {
 		n++
 	}
 	return n, nil
+}
+
+// palRank orders the species picker: ordinary pals, then tower bosses, then
+// raid bosses. They are all addable; this is only about what comes first.
+func palRank(p *paldata.Pal) int {
+	switch {
+	case p.IsRaidBoss:
+		return 2
+	case p.IsTowerBoss:
+		return 1
+	default:
+		return 0
+	}
 }
