@@ -99,6 +99,28 @@ are full-screen textures that happen to live in the same folder, and together
 are ~17% of the download. The script skips upstream's `img/app/` subfolder,
 which is that project's own branding rather than game content.
 
+## 나나치 마스코트 (`frontend/src/assets/nanachi_*.png`) — 저장소에 있음
+
+앱 아이콘과 UI 마스코트로 쓰는 나나치 그림 5장이다. 나나치는 『메이드 인
+어비스』(츠쿠시 아키히토 / 타케쇼보) 캐릭터다. 같은 작성자의
+`NanachiDeprotector` 에서 가져왔고, 그쪽에서도 저장소에 함께 들어 있다.
+
+**바로 위 팰월드 아트 정책과 다른 판단이라, 그 차이를 여기 적어둔다.**
+팰월드 텍스처는 이 도구가 다루는 게임의 에셋이고 2,400장이 넘어서 "받아서 쓰고
+저장소엔 안 넣는다"가 명확한 선이었다. 나나치 그림은 앱 자체의 브랜딩이고
+5장이다. 그래도 **남의 저작물인 건 똑같다** — "게임 에셋이 아니니 괜찮다"가
+아니라, 작성자가 자기 다른 프로젝트에서 이미 같은 선택을 했으니 여기서도
+맞춘 것이다.
+
+문제가 되면 팰월드 아트와 같은 처리를 하면 된다: `frontend/src/assets/` 를
+`.gitignore` 에 넣고 스크립트로 받아오게 바꾸는 것. 다만 마스코트는 아이콘과
+달리 **없으면 빌드가 깨진다** — `import` 로 번들에 들어가서, 아이콘처럼 없으면
+텍스트로 폴백하는 구조가 아니다. 그렇게 바꾸려면 로딩 방식도 같이 손봐야 한다.
+
+`scripts/build-appicon.py` 가 `nanachi_face.png` 하나로 `build/appicon.png`
+(1024px)와 `build/windows/icon.ico`(16~256px 7종)를 만든다. 초상화를 바꾸면
+스크립트를 다시 돌린다.
+
 ## Building the native codec
 
 ```sh

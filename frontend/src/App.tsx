@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import "./style.css";
+import nanachiFace from "./assets/nanachi_face.png";
+import nanachiIdle from "./assets/nanachi_idle.png";
+import nanachiWorking from "./assets/nanachi_working.png";
+import nanachiSuccess from "./assets/nanachi_success.png";
+import nanachiError from "./assets/nanachi_error.png";
 import {
   BaseCamps,
   BasePals,
@@ -195,6 +200,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="topbar">
+        <img src={nanachiFace} alt="" className="brand-avatar" aria-hidden="true" />
         <h1>나나치의 팰월드 세이브 에디터</h1>
         {save && <span className="path">{save.path}</span>}
         <span className="spacer" />
@@ -230,7 +236,15 @@ export default function App() {
 
           <div className="main">
             {!selected ? (
-              <div className="empty">왼쪽에서 편집할 플레이어를 고르세요.</div>
+              <div className="empty">
+                <img
+                  src={nanachiIdle}
+                  alt=""
+                  className="empty-mascot"
+                  aria-hidden="true"
+                />
+                왼쪽에서 편집할 플레이어를 고르세요.
+              </div>
             ) : (
               <>
                 <div className="tabs">
@@ -299,8 +313,23 @@ export default function App() {
         </div>
       )}
 
+      {busy && (
+        <div className="working" role="status" aria-live="polite">
+          <img src={nanachiWorking} alt="" aria-hidden="true" />
+          <span>작업 중…</span>
+        </div>
+      )}
+
       {toast && (
-        <div className={`toast ${toast.bad ? "error" : ""}`}>{toast.msg}</div>
+        <div className={`toast ${toast.bad ? "error" : ""}`}>
+          <img
+            src={toast.bad ? nanachiError : nanachiSuccess}
+            alt=""
+            className="toast-mascot"
+            aria-hidden="true"
+          />
+          <span>{toast.msg}</span>
+        </div>
       )}
     </div>
   );
@@ -317,6 +346,7 @@ function Welcome({
 }) {
   return (
     <div className="welcome">
+      <img src={nanachiIdle} alt="" className="welcome-mascot" aria-hidden="true" />
       <h2>세이브 파일을 여세요</h2>
       <p>
         서버의 <code>Level.sav</code> 를 고르면 같은 폴더의 <code>Players</code>{" "}

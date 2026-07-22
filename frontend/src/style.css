@@ -349,15 +349,101 @@ button.card:hover {
   padding: 10px 16px;
   max-width: 70ch;
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .toast.error {
   border-left-color: var(--danger);
+}
+/* Small enough to read as punctuation on the message rather than compete
+   with it — the text is the thing the user came for. */
+.toast-mascot {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  flex: none;
 }
 
 .empty {
   color: var(--muted);
   padding: 44px 0;
   text-align: center;
+}
+
+/* --- Nanachi ------------------------------------------------------------ */
+
+.brand-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  /* The portrait is transparent around the head, so it needs a disc behind it
+     to read as an avatar against the panel. */
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  flex: none;
+}
+
+.welcome-mascot {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  /* Sitting idle, waiting for a file — matches what the screen is asking for. */
+  opacity: 0.95;
+}
+
+.empty-mascot {
+  display: block;
+  width: 132px;
+  height: 132px;
+  object-fit: contain;
+  margin: 0 auto 14px;
+  opacity: 0.75;
+}
+
+/* Shown while a call is in flight. Fixed to the corner rather than blocking
+   the view: the work is usually fast, and covering the screen for a 200ms
+   call is worse than not showing anything. */
+.working {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 10;
+}
+.working img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  animation: nanachi-bob 1.4s ease-in-out infinite;
+}
+
+@keyframes nanachi-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* Someone who set "reduce motion" asked not to be bobbed at. */
+@media (prefers-reduced-motion: reduce) {
+  .working img {
+    animation: none;
+  }
 }
 
 .dirty {
