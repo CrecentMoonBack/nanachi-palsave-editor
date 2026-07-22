@@ -895,3 +895,83 @@ button.wide {
 .muted.small {
   font-size: 12px;
 }
+
+/* multi-select ---------------------------------------------------------- */
+
+.list-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px 8px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.check-all {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  flex: 1;
+}
+button.tiny {
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
+.pal-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.pal-row.picked {
+  background: var(--panel-2);
+}
+.pal-row > input[type="checkbox"] {
+  flex: none;
+  margin-left: 9px;
+  cursor: pointer;
+}
+.pal-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  padding: 7px 10px 7px 0;
+}
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--accent-dim);
+  border-radius: 9px;
+  position: sticky;
+  bottom: 0;
+}
+.bulk-count {
+  font-weight: 600;
+  color: var(--accent);
+  flex: none;
+}
+.bulk-bar label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.bulk-bar input[type="number"] {
+  width: 74px;
+}
+.bulk-bar button {
+  padding: 5px 11px;
+  font-size: 12px;
+}

@@ -366,6 +366,9 @@ function PalsTab({
   const [presets, setPresets] = useState<main.PresetInfo[]>([]);
   const [presetPick, setPresetPick] = useState("");
   const [managing, setManaging] = useState(false);
+  // Instance ids ticked for bulk work. A Set so toggling one row does not
+  // rebuild an array of a few hundred entries.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const loadPresets = useCallback(() => {
     Presets()
@@ -476,6 +479,32 @@ function PalsTab({
     setView(v);
     setPick("");
     setEditing("");
+    setSelected(new Set());
+  }
+
+  function toggle(id: string) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  }
+
+  // The ticked pals, in the order shown, filtered through what is on screen:
+  // an id left over from another species would edit something invisible.
+  const picked = members.filter((p) => selected.has(p.instanceId));
+
+  async function bulk(label: string, fn: (p: main.PalInfo) => Promise<void>) {
+    if (picked.length === 0) return;
+    setBusy(true);
+    try {
+      for (const p of picked) await fn(p);
+      say(picked.length + "마리 · " + label);
+      await afterEdit();
+    } catch (e: any) {
+      say(String(e), true);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -519,6 +548,7 @@ function PalsTab({
           onChange={(e) => {
             setPick(e.target.value);
             setEditing("");
+            setSelected(new Set());
           }}
         >
           <option value="">선택…</option>
@@ -604,6 +634,7 @@ function PalsTab({
                 onClick={() => {
                   setPick(s.speciesId);
                   setEditing("");
+                  setSelected(new Set());
                 }}
               >
                 <Icon file={s.icon} alt={s.name} />
@@ -631,30 +662,176 @@ function PalsTab({
                 </button>
               </div>
 
+              <div className="list-head">
+                <label className="check-all">
+                  <input
+                    type="checkbox"
+                    checked={
+                      picked.length === members.length && members.length > 0
+                    }
+                    ref={(el) => {
+                      if (el)
+                        el.indeterminate =
+                          picked.length > 0 && picked.length < members.length;
+                    }}
+                    onChange={(e) =>
+                      setSelected(
+                        e.target.checked
+                          ? new Set(members.map((p) => p.instanceId))
+                          : new Set()
+                      )
+                    }
+                  />
+                  <span>
+                    {picked.length > 0
+                      ? picked.length + "마리 선택"
+                      : "전체 선택"}
+                  </span>
+                </label>
+                {picked.length > 0 && (
+                  <button
+                    className="ghost tiny"
+                    onClick={() => setSelected(new Set())}
+                  >
+                    해제
+                  </button>
+                )}
+              </div>
+
               <div className="pal-list">
                 {members.map((p) => (
-                  <button
+                  <div
                     key={p.instanceId}
                     className={`pal-row ${
                       p.instanceId === editing ? "active" : ""
-                    }`}
-                    onClick={() =>
-                      setEditing(p.instanceId === editing ? "" : p.instanceId)
-                    }
+                    } ${selected.has(p.instanceId) ? "picked" : ""}`}
                   >
-                    {view === "base" && p.camp > 0 && (
-                      <span className="camp">거점{p.camp}</span>
-                    )}
-                    <span className="lv">Lv{p.level}</span>
-                    <span className="rank">{"★".repeat(p.rank - 1)}</span>
-                    <span className="passives">
-                      {p.passives.length
-                        ? p.passives.map((x) => x.name).join(" · ")
-                        : "—"}
-                    </span>
-                  </button>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(p.instanceId)}
+                      onChange={() => toggle(p.instanceId)}
+                      title="선택"
+                    />
+                    <button
+                      className="pal-open"
+                      onClick={() =>
+                        setEditing(p.instanceId === editing ? "" : p.instanceId)
+                      }
+                    >
+                      {view === "base" && p.camp > 0 && (
+                        <span className="camp">거점{p.camp}</span>
+                      )}
+                      <span className="lv">Lv{p.level}</span>
+                      <span className="rank">{"★".repeat(p.rank - 1)}</span>
+                      <span className="passives">
+                        {p.passives.length
+                          ? p.passives.map((x) => x.name).join(" · ")
+                          : "—"}
+                      </span>
+                    </button>
+                  </div>
                 ))}
               </div>
+
+              {picked.length > 0 && (
+                <div className="bulk-bar">
+                  <span className="bulk-count">{picked.length}마리에</span>
+
+                  <label>레벨</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={status?.maxLevel ?? 80}
+                    value={level}
+                    onChange={(e) => setLevel(Number(e.target.value))}
+                  />
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      bulk("레벨 " + level, (p) =>
+                        SetPalLevel(p.instanceId, level)
+                      )
+                    }
+                  >
+                    적용
+                  </button>
+
+                  <span className="tb-sep" />
+
+                  <select
+                    value={presetPick}
+                    onChange={(e) => setPresetPick(e.target.value)}
+                  >
+                    <option value="">패시브 프리셋…</option>
+                    {presets.map((x) => (
+                      <option key={x.name} value={x.name}>
+                        {x.name}
+                        {x.stale ? " (사용 불가)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    disabled={busy || !presetPick}
+                    onClick={() => {
+                      const pr = presets.find((x) => x.name === presetPick);
+                      if (!pr) return;
+                      if (pr.stale) {
+                        say(
+                          pr.name +
+                            " 프리셋에 알 수 없는 패시브가 있어 적용할 수 없습니다",
+                          true
+                        );
+                        return;
+                      }
+                      const ids = pr.passives.map((x) => x.id);
+                      bulk("패시브 " + pr.name, (p) =>
+                        SetPalPassives(p.instanceId, ids)
+                      );
+                    }}
+                  >
+                    적용
+                  </button>
+
+                  <span className="tb-sep" />
+
+                  <button
+                    disabled={busy}
+                    title="개체값 4종을 모두 최대로"
+                    onClick={() => {
+                      const v = status?.maxTalent ?? 100;
+                      bulk("개체값 " + v, async (p) => {
+                        for (const t of TALENTS)
+                          await SetPalTalent(p.instanceId, t.prop, v);
+                      });
+                    }}
+                  >
+                    개체값 최대
+                  </button>
+                  <button
+                    disabled={busy}
+                    title="팰 영혼 4종을 모두 최대로"
+                    onClick={() => {
+                      const v = status?.maxRankBonus ?? 20;
+                      bulk("영혼 " + v, async (p) => {
+                        for (const so of SOULS)
+                          await SetPalRankBonus(p.instanceId, so.prop, v);
+                      });
+                    }}
+                  >
+                    영혼 최대
+                  </button>
+                  <button
+                    disabled={busy}
+                    title="응축을 최대로"
+                    onClick={() => {
+                      const v = status?.maxRank ?? 5;
+                      bulk("응축 " + v, (p) => SetPalRank(p.instanceId, v));
+                    }}
+                  >
+                    응축 최대
+                  </button>
+                </div>
+              )}
 
               {current && (
                 <PalEditor
