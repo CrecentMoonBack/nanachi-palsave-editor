@@ -1,0 +1,135 @@
+# Builds a Windows release and attaches it to a GitHub Release.
+#
+# Run it by pushing a tag:  git tag v0.1.0 && git push origin v0.1.0
+# Or from the Actions tab, which builds and uploads the zip without publishing
+# a release — useful for checking the packaging before committing to a version.
+#
+# What is deliberately NOT in the zip: assets/icons. Those are Palworld's own
+# textures, ~34 MB of them, and docs/THIRD_PARTY.md is explicit that this
+# project never redistributes the artwork. build.sh copies them next to the
+# executable for local use, so packaging build/bin wholesale would publish
+# them — the packaging step below lists files individually for that reason.
+# Users run scripts/fetch-icons.sh themselves; the app works without it.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # ooz is cloned rather than vendored, so the source has to be fetched
+      # before anything can link against it. Pinned to the revision
+      # docs/THIRD_PARTY.md records, so a release is reproducible and an
+      # upstream change cannot silently alter what ships.
+      - name: Fetch ooz
+        shell: bash
+        run: |
+          git clone https://github.com/zao/ooz.git third_party/oodle/ooz-zao
+          cd third_party/oodle/ooz-zao
+          git checkout ff5aeb9e45e362e8d6bb1199aa82406285dd2a18
+          git submodule update --init --depth 1
+
+      # The runner's default gcc is MinGW-w64, which is what build.sh expects.
+      - name: Build the native codec
+        shell: bash
+        run: |
+          g++ --version
+          bash third_party/oodle/build.sh
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build
+        shell: bash
+        run: |
+          wails build
+          go build -o build/bin/palsave.exe ./cmd/palsave
+
+      - name: Test
+        shell: bash
+        run: go test ./...
+
+      - name: Package
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+          DIR="NanachiPalSaveEditor-$VERSION"
+          mkdir -p "$DIR"
+
+          # Listed one by one on purpose. Copying build/bin would sweep in
+          # assets/icons — see the note at the top of this file.
+          cp build/bin/NanachiPalSaveEditor.exe "$DIR/"
+          cp build/bin/palsave.exe "$DIR/"
+          cp third_party/oodle/nanachi_ooz.dll "$DIR/"
+          cp LICENSE "$DIR/"
+          cp README.md "$DIR/"
+          cp docs/THIRD_PARTY.md "$DIR/"
+          cp scripts/fetch-icons.sh "$DIR/"
+
+          # Fail loudly rather than publish game artwork by accident.
+          if find "$DIR" -iname '*.webp' | grep -q .; then
+            echo "::error::game artwork ended up in the package"
+            exit 1
+          fi
+
+          7z a -tzip "$DIR.zip" "$DIR"
+          echo "ARCHIVE=$DIR.zip" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE }}
+          path: ${{ env.ARCHIVE }}
+
+      # GPL-3: shipping binaries obliges us to offer the corresponding source.
+      # The repository is public and the tag is part of the release, so the
+      # source for exactly these binaries is available at the same place — the
+      # notes say so rather than leaving it implied.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARCHIVE }}
+          body: |
+            ## 설치
+
+            1. 압축을 풀고 `NanachiPalSaveEditor.exe` 실행
+            2. `Level.sav` 를 고르면 같은 폴더의 `Players` 도 함께 읽습니다
+
+            `nanachi_ooz.dll` 이 exe 옆에 있어야 세이브를 열 수 있습니다.
+            압축을 통째로 풀면 그대로 맞습니다.
+
+            ### 팰 그림
+
+            팰·아이템 이미지는 게임 회사 저작물이라 배포판에 넣지 않습니다.
+            없어도 전부 동작하며 한글 이름으로 표시됩니다. 채우려면
+            `fetch-icons.sh` 를 실행하세요.
+
+            ### 라이선스
+
+            GPL-3.0. 이 파일들의 소스는 같은 저장소의 `${{ github.ref_name }}`
+            태그에 있습니다. 자세한 third-party 내역은 `THIRD_PARTY.md` 참고.
