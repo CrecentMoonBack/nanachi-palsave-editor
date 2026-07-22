@@ -86,12 +86,25 @@ Every one of those degrades cleanly: with no artwork, `icons.Available()` is
 false, requests 404, and the GUI shows Korean names. **The editor is fully
 usable with no images at all** — this is a display nicety, not a dependency.
 
-The script copies from a palworld-save-pal working copy
+The script fetches from palworld-save-pal
 (<https://github.com/oMaN-Rod/palworld-save-pal>, `ui/src/lib/assets/img/`),
-which is the same upstream the id tables came from. It is a checkout we already
-have, over SSH, one file at a time — not a scraper against a fan site.
-`CLAUDE.md` rules that out for two good reasons: it puts our load on someone
-who never agreed to it, and it breaks the moment they change their markup.
+which is the same upstream the id tables came from. It clones that public
+repository — a sparse, blob-filtered, depth-1 clone of the one directory, so it
+transfers the 34 MB rather than the repo's ~380 MB — the same way this project
+clones ooz instead of vendoring it. Not a scraper against a fan site;
+`CLAUDE.md` rules that out for two good reasons: it puts our load on someone who
+never agreed to it, and it breaks the moment they change their markup.
+
+`REMOTE=host` switches it to an existing checkout over ssh instead, which is
+faster when you already have one. **That used to be the only mode**, pointing at
+an SSH alias that exists on one machine, which made the copy shipped in a
+release useless to everyone who downloaded it. Found on the first release, by
+a user asking the obvious question: how does anyone else get the images.
+
+That upstream repository carries no licence of its own. It is the same source
+the id tables came from and the same one this file already documented, so
+pointing the script at it changes nothing about who owns the artwork — but it
+is worth knowing before recommending the tool to anyone.
 
 About the set: ~2462 files, ~34 MB, all lowercase `.webp`, flat. Two outliers
 are not icons at all — `t_worldmap.webp` (2.5 MB) and `t_treemap.webp` (3.4 MB)
