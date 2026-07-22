@@ -63,10 +63,45 @@ echo ok
 # --allow-multiple-definition: -fpermissive promotes stdafx.h's static _rotl to
 # external linkage, so every translation unit emits one. The definitions are
 # identical, so letting the linker keep the first is safe.
+#
+# -static, not just -static-libgcc/-static-libstdc++. Those two leave
+# libwinpthread-1.dll as a runtime dependency, which is fine on a machine with
+# MinGW installed and a trap everywhere else: Windows searches PATH for it, and
+# if it finds a 32-bit copy left behind by some unrelated tool it loads that and
+# fails with "%1 is not a valid Win32 application" — an architecture error
+# pointing at our DLL, which is the wrong place to look. A user hit exactly
+# this. Linking the runtime in means the DLL asks the system for nothing but
+# kernel32 and the UCRT.
 echo "linking $OUT..."
 g++ -shared -o "$OUT" "$OBJ"/*.o \
-    -static-libgcc -static-libstdc++ \
+    -static -static-libgcc -static-libstdc++ \
     -Wl,--allow-multiple-definition -Wl,--strip-all
 
 ls -la "$OUT"
 echo "done"
+
+# The DLL must not need anything the user might not have. A dependency the
+# build machine happens to own is invisible here and fatal on someone else's
+# PC: v0.1.3 shipped needing libwinpthread-1.dll, and a user whose PATH held a
+# 32-bit copy of it got "%1 is not a valid Win32 application" — an
+# architecture error naming *our* DLL, which is the wrong place to look.
+#
+# So the imports are checked rather than assumed. kernel32 and the C runtime
+# ship with Windows; anything else has to be linked in or deliberately added
+# to this list.
+ALLOWED='^(kernel32|msvcrt|advapi32|user32|api-ms-win-crt-[a-z0-9-]+)\.dll$'
+if command -v objdump >/dev/null 2>&1; then
+    bad=$(objdump -p "$OUT" | sed -n 's/^\tDLL Name: //p' \
+        | tr 'A-Z' 'a-z' | grep -Ev "$ALLOWED" || true)
+    if [ -n "$bad" ]; then
+        echo >&2
+        echo "ERROR: $OUT depends on DLLs a user may not have:" >&2
+        echo "$bad" | sed 's/^/  /' >&2
+        echo >&2
+        echo "Link them in (see -static above) rather than shipping them." >&2
+        exit 1
+    fi
+    echo "dependencies ok: $(objdump -p "$OUT" | sed -n 's/^\tDLL Name: //p' | tr '\n' ' ')"
+else
+    echo "objdump not found; skipping the dependency check." >&2
+fi
