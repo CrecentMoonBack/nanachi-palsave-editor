@@ -493,19 +493,10 @@ function PalsTab({
   // an id left over from another species would edit something invisible.
   const picked = members.filter((p) => selected.has(p.instanceId));
 
-  async function bulk(label: string, fn: (p: main.PalInfo) => Promise<void>) {
-    if (picked.length === 0) return;
-    setBusy(true);
-    try {
-      for (const p of picked) await fn(p);
-      say(picked.length + "마리 · " + label);
-      await afterEdit();
-    } catch (e: any) {
-      say(String(e), true);
-    } finally {
-      setBusy(false);
-    }
-  }
+  // What the detail editor works on: the ticked pals when there are any,
+  // otherwise the single row that was opened.
+  const editTargets = picked.length > 0 ? picked : current ? [current] : [];
+
 
   return (
     <>
@@ -733,110 +724,10 @@ function PalsTab({
                 ))}
               </div>
 
-              {picked.length > 0 && (
-                <div className="bulk-bar">
-                  <span className="bulk-count">{picked.length}마리에</span>
-
-                  <label>레벨</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={status?.maxLevel ?? 80}
-                    value={level}
-                    onChange={(e) => setLevel(Number(e.target.value))}
-                  />
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      bulk("레벨 " + level, (p) =>
-                        SetPalLevel(p.instanceId, level)
-                      )
-                    }
-                  >
-                    적용
-                  </button>
-
-                  <span className="tb-sep" />
-
-                  <select
-                    value={presetPick}
-                    onChange={(e) => setPresetPick(e.target.value)}
-                  >
-                    <option value="">패시브 프리셋…</option>
-                    {presets.map((x) => (
-                      <option key={x.name} value={x.name}>
-                        {x.name}
-                        {x.stale ? " (사용 불가)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    disabled={busy || !presetPick}
-                    onClick={() => {
-                      const pr = presets.find((x) => x.name === presetPick);
-                      if (!pr) return;
-                      if (pr.stale) {
-                        say(
-                          pr.name +
-                            " 프리셋에 알 수 없는 패시브가 있어 적용할 수 없습니다",
-                          true
-                        );
-                        return;
-                      }
-                      const ids = pr.passives.map((x) => x.id);
-                      bulk("패시브 " + pr.name, (p) =>
-                        SetPalPassives(p.instanceId, ids)
-                      );
-                    }}
-                  >
-                    적용
-                  </button>
-
-                  <span className="tb-sep" />
-
-                  <button
-                    disabled={busy}
-                    title="개체값 4종을 모두 최대로"
-                    onClick={() => {
-                      const v = status?.maxTalent ?? 100;
-                      bulk("개체값 " + v, async (p) => {
-                        for (const t of TALENTS)
-                          await SetPalTalent(p.instanceId, t.prop, v);
-                      });
-                    }}
-                  >
-                    개체값 최대
-                  </button>
-                  <button
-                    disabled={busy}
-                    title="팰 영혼 4종을 모두 최대로"
-                    onClick={() => {
-                      const v = status?.maxRankBonus ?? 20;
-                      bulk("영혼 " + v, async (p) => {
-                        for (const so of SOULS)
-                          await SetPalRankBonus(p.instanceId, so.prop, v);
-                      });
-                    }}
-                  >
-                    영혼 최대
-                  </button>
-                  <button
-                    disabled={busy}
-                    title="응축을 최대로"
-                    onClick={() => {
-                      const v = status?.maxRank ?? 5;
-                      bulk("응축 " + v, (p) => SetPalRank(p.instanceId, v));
-                    }}
-                  >
-                    응축 최대
-                  </button>
-                </div>
-              )}
-
-              {current && (
+              {editTargets.length > 0 && (
                 <PalEditor
-                  key={current.instanceId}
-                  pal={current}
+                  key={editTargets.map((t) => t.instanceId).join(",")}
+                  targets={editTargets}
                   status={status}
                   presets={presets}
                   onManage={() => setManaging(true)}
@@ -859,8 +750,21 @@ function PalsTab({
  * Edits one pal. Values are held locally and written on 적용 rather than on
  * every keystroke, so a half-typed number never reaches the save.
  */
+/**
+ * The detail editor, for one pal or for a whole selection.
+ *
+ * One component rather than a separate bulk form: the field list would
+ * otherwise drift between the two, and the fields are the interesting part.
+ *
+ * The difference that matters is what gets written. Editing one pal writes
+ * every field, because the form was seeded from that pal and matches it.
+ * Editing several seeds from the first of them, which says nothing about the
+ * rest, so each group must be ticked before it is written. Without that, a
+ * selection would silently inherit the first pal's talents and souls — the
+ * same shape of mistake as a max button that lowered a stat.
+ */
 function PalEditor({
-  pal,
+  targets,
   status,
   presets,
   onManage,
@@ -869,7 +773,7 @@ function PalEditor({
   say,
   onChanged,
 }: {
-  pal: main.PalInfo;
+  targets: main.PalInfo[];
   status: main.Status | null;
   presets: main.PresetInfo[];
   onManage: () => void;
@@ -878,10 +782,13 @@ function PalEditor({
   say: (m: string, bad?: boolean) => void;
   onChanged: () => Promise<void>;
 }) {
-  const maxLevel = status?.maxLevel ?? 100;
+  const pal = targets[0];
+  const many = targets.length > 1;
+
+  const maxLevel = status?.maxLevel ?? 80;
   const maxRank = status?.maxRank ?? 5;
   const maxTalent = status?.maxTalent ?? 100;
-  const maxSoul = status?.maxRankBonus ?? 10;
+  const maxSoul = status?.maxRankBonus ?? 20;
   const maxPassives = status?.maxPassives ?? 4;
   const maxWork = status?.maxWork ?? 10;
 
@@ -900,36 +807,61 @@ function PalEditor({
     Rank_CraftSpeed: pal.soulCraftSpeed,
   });
   const [passives, setPassives] = useState<main.PassiveInfo[]>(pal.passives);
-  // Keyed by bare job id, holding only what a book added — the species
-  // base is display context and is never written.
+  // Keyed by bare job id, holding only what a book added — the species base is
+  // display context and is never written.
   const [work, setWork] = useState<Record<string, number>>(() =>
     Object.fromEntries((pal.work ?? []).map((w) => [w.id, w.bonus]))
   );
 
+  // Which groups apply. Everything is on for a single pal; nothing is on for a
+  // selection until the user says so.
+  const [on, setOn] = useState<Record<string, boolean>>({
+    level: !many,
+    rank: !many,
+    talents: !many,
+    souls: !many,
+    work: !many,
+    passives: !many,
+  });
+  const enable = (k: string) => setOn((o) => ({ ...o, [k]: true }));
+  const nothingOn = many && !Object.values(on).some(Boolean);
+
   async function apply() {
     setBusy(true);
     try {
-      // Passives first: it is the only call that can reject the whole form,
-      // so failing here leaves nothing half-written.
-      await SetPalPassives(
-        pal.instanceId,
-        passives.map((p) => p.id)
-      );
-      await SetPalLevel(pal.instanceId, level);
-      await SetPalRank(pal.instanceId, rank);
-      for (const t of TALENTS) {
-        await SetPalTalent(pal.instanceId, t.prop, talents[t.prop]);
-      }
-      for (const s of SOULS) {
-        await SetPalRankBonus(pal.instanceId, s.prop, souls[s.prop]);
-      }
-      for (const w of pal.work ?? []) {
-        const next = work[w.id] ?? 0;
-        if (next !== w.bonus) {
-          await SetPalWorkSuitability(pal.instanceId, w.id, next);
+      for (const t of targets) {
+        // Passives first: it is the only call that can reject the whole form,
+        // so failing here leaves nothing half-written.
+        if (on.passives) {
+          await SetPalPassives(
+            t.instanceId,
+            passives.map((p) => p.id)
+          );
+        }
+        if (on.level) await SetPalLevel(t.instanceId, level);
+        if (on.rank) await SetPalRank(t.instanceId, rank);
+        if (on.talents) {
+          for (const x of TALENTS) {
+            await SetPalTalent(t.instanceId, x.prop, talents[x.prop]);
+          }
+        }
+        if (on.souls) {
+          for (const x of SOULS) {
+            await SetPalRankBonus(t.instanceId, x.prop, souls[x.prop]);
+          }
+        }
+        if (on.work) {
+          // Written against this pal's own rows, not the seed's: a mixed
+          // selection has different jobs per species.
+          for (const w of t.work ?? []) {
+            const next = work[w.id] ?? 0;
+            if (next !== w.bonus) {
+              await SetPalWorkSuitability(t.instanceId, w.id, next);
+            }
+          }
         }
       }
-      say(`${pal.name} 수정됨 · Lv${level} · ${rank}농축`);
+      say(many ? `${targets.length}마리 수정됨` : `${pal.name} 수정됨`);
       await onChanged();
     } catch (e: any) {
       say(String(e), true);
@@ -943,17 +875,39 @@ function PalEditor({
     setRank(maxRank);
     setTalents(Object.fromEntries(TALENTS.map((t) => [t.prop, maxTalent])));
     setSouls(Object.fromEntries(SOULS.map((s) => [s.prop, maxSoul])));
+    setOn((o) => ({ ...o, level: true, rank: true, talents: true, souls: true }));
   }
+
+  // A per-group tick, shown only when editing several pals.
+  function Gate({ k }: { k: string }) {
+    if (!many) return null;
+    return (
+      <label className="gate" title="이 항목을 선택한 팰 전체에 적용">
+        <input
+          type="checkbox"
+          checked={!!on[k]}
+          onChange={(e) => setOn({ ...on, [k]: e.target.checked })}
+        />
+      </label>
+    );
+  }
+
+  const species = Array.from(new Set(targets.map((t) => t.name)));
 
   return (
     <div className="editor">
       <div className="editor-head">
         <Icon file={pal.icon} alt={pal.name} />
         <div className="info">
-          <div className="title">{pal.nickname || pal.name}</div>
+          <div className="title">
+            {many ? `${targets.length}마리 선택됨` : pal.nickname || pal.name}
+          </div>
           <div className="sub">
-            {pal.name}
-            {pal.isBoss && <span className="badge">알파</span>}
+            {many
+              ? species.slice(0, 3).join(", ") +
+                (species.length > 3 ? ` 외 ${species.length - 3}종` : "")
+              : pal.name}
+            {!many && pal.isBoss && <span className="badge">알파</span>}
           </div>
         </div>
         <button className="ghost" onClick={maxAll} disabled={busy}>
@@ -961,8 +915,16 @@ function PalEditor({
         </button>
       </div>
 
-      <div className="field-group">
+      {many && (
+        <div className="bulk-note">
+          체크한 항목만 선택한 {targets.length}마리에 적용됩니다. 값은 첫 번째
+          팰에서 가져왔습니다.
+        </div>
+      )}
+
+      <div className={`field-group ${many && !on.level ? "off" : ""}`}>
         <div className="group-title">
+          <Gate k="level" />
           레벨 <span className="range">1–{maxLevel}</span>
         </div>
         <div className="hint">경험치도 그 레벨에 맞춰 함께 바뀝니다.</div>
@@ -972,20 +934,27 @@ function PalEditor({
             min={1}
             max={maxLevel}
             value={level}
-            onChange={(e) => setLevel(Number(e.target.value))}
+            onChange={(e) => {
+              setLevel(Number(e.target.value));
+              enable("level");
+            }}
           />
           <input
             type="range"
             min={1}
             max={maxLevel}
             value={level}
-            onChange={(e) => setLevel(Number(e.target.value))}
+            onChange={(e) => {
+              setLevel(Number(e.target.value));
+              enable("level");
+            }}
           />
         </div>
       </div>
 
-      <div className="field-group">
+      <div className={`field-group ${many && !on.rank ? "off" : ""}`}>
         <div className="group-title">
+          <Gate k="rank" />
           응축 <span className="range">1–{maxRank}</span>
         </div>
         <div className="hint">
@@ -998,7 +967,10 @@ function PalEditor({
             min={1}
             max={maxRank}
             value={rank}
-            onChange={(e) => setRank(Number(e.target.value))}
+            onChange={(e) => {
+              setRank(Number(e.target.value));
+              enable("rank");
+            }}
           />
           <span className="stars">
             {"★".repeat(Math.max(0, rank - 1)) +
@@ -1007,8 +979,9 @@ function PalEditor({
         </div>
       </div>
 
-      <div className="field-group">
+      <div className={`field-group ${many && !on.talents ? "off" : ""}`}>
         <div className="group-title">
+          <Gate k="talents" />
           개체값 <span className="range">0–{maxTalent}</span>
         </div>
         <div className="hint">
@@ -1024,17 +997,19 @@ function PalEditor({
                 min={0}
                 max={maxTalent}
                 value={talents[t.prop]}
-                onChange={(e) =>
-                  setTalents({ ...talents, [t.prop]: Number(e.target.value) })
-                }
+                onChange={(e) => {
+                  setTalents({ ...talents, [t.prop]: Number(e.target.value) });
+                  enable("talents");
+                }}
               />
             </label>
           ))}
         </div>
       </div>
 
-      <div className="field-group">
+      <div className={`field-group ${many && !on.souls ? "off" : ""}`}>
         <div className="group-title">
+          <Gate k="souls" />
           팰 영혼 <span className="range">0–{maxSoul}</span>
         </div>
         <div className="hint">
@@ -1050,17 +1025,19 @@ function PalEditor({
                 min={0}
                 max={maxSoul}
                 value={souls[s.prop]}
-                onChange={(e) =>
-                  setSouls({ ...souls, [s.prop]: Number(e.target.value) })
-                }
+                onChange={(e) => {
+                  setSouls({ ...souls, [s.prop]: Number(e.target.value) });
+                  enable("souls");
+                }}
               />
             </label>
           ))}
         </div>
       </div>
 
-      <div className="field-group">
+      <div className={`field-group ${many && !on.work ? "off" : ""}`}>
         <div className="group-title">
+          <Gate k="work" />
           노동 적성 <span className="range">0–{maxWork}</span>
         </div>
         <div className="hint">
@@ -1068,6 +1045,7 @@ function PalEditor({
           기록되고, 종족이 원래 가진 적성은 따로입니다. 둘을 합치면 게임에서
           몇 등급으로 보이는지는 아직 확인하지 못해서, 여기서는 각각 그대로
           보여줍니다.
+          {many && " 여러 종족을 함께 고르면 기본 적성은 첫 팰 기준입니다."}
         </div>
         <div className="work-grid">
           {(pal.work ?? []).map((w) => {
@@ -1084,9 +1062,10 @@ function PalEditor({
                   min={0}
                   max={maxWork}
                   value={cur}
-                  onChange={(e) =>
-                    setWork({ ...work, [w.id]: Number(e.target.value) })
-                  }
+                  onChange={(e) => {
+                    setWork({ ...work, [w.id]: Number(e.target.value) });
+                    enable("work");
+                  }}
                 />
               </label>
             );
@@ -1094,17 +1073,28 @@ function PalEditor({
         </div>
       </div>
 
-      <PassivePicker
-        chosen={passives}
-        max={maxPassives}
-        presets={presets}
-        onChange={setPassives}
-        onManage={onManage}
-        say={say}
-      />
+      <div className={`field-group-wrap ${many && !on.passives ? "off" : ""}`}>
+        <PassivePicker
+          chosen={passives}
+          max={maxPassives}
+          presets={presets}
+          gate={many ? <Gate k="passives" /> : null}
+          onChange={(next) => {
+            setPassives(next);
+            enable("passives");
+          }}
+          onManage={onManage}
+          say={say}
+        />
+      </div>
 
-      <button className="primary apply" onClick={apply} disabled={busy}>
-        이 팰에 적용
+      <button
+        className="primary apply"
+        onClick={apply}
+        disabled={busy || nothingOn}
+        title={nothingOn ? "적용할 항목을 체크하세요" : ""}
+      >
+        {many ? `선택한 ${targets.length}마리에 적용` : "이 팰에 적용"}
       </button>
     </div>
   );
@@ -1206,6 +1196,7 @@ function PassivePicker({
   chosen,
   max,
   presets,
+  gate,
   onChange,
   onManage,
   say,
@@ -1213,6 +1204,8 @@ function PassivePicker({
   chosen: main.PassiveInfo[];
   max: number;
   presets: main.PresetInfo[];
+  // gate is the per-group apply tick, present only when editing several pals.
+  gate?: React.ReactNode;
   onChange: (next: main.PassiveInfo[]) => void;
   onManage: () => void;
   say: (m: string, bad?: boolean) => void;
@@ -1220,6 +1213,7 @@ function PassivePicker({
   return (
     <div className="field-group">
       <div className="group-title">
+        {gate}
         패시브{" "}
         <span className="range">
           {chosen.length}/{max}

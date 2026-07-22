@@ -975,3 +975,34 @@ button.tiny {
   padding: 5px 11px;
   font-size: 12px;
 }
+
+/* per-group apply gates (bulk editing) --------------------------------- */
+
+.bulk-note {
+  background: var(--panel-2);
+  border: 1px solid var(--accent-dim);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.gate {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 7px;
+  vertical-align: middle;
+}
+.gate input {
+  cursor: pointer;
+}
+
+.field-group.off,
+.field-group-wrap.off .field-group {
+  opacity: 0.45;
+}
+.field-group.off .hint,
+.field-group-wrap.off .hint {
+  color: var(--muted);
+}
