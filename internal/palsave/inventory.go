@@ -28,6 +28,31 @@ func (w *World) SetItemCount(container gvas.GUID, itemID string, count int32) (i
 	return n, nil
 }
 
+// SetSlotCount changes one slot, addressed by its index.
+//
+// SetItemCount above addresses stacks by item id, which cannot express "this
+// one" when a container holds the same item twice — a chest with 9,999 crude
+// oil in one slot and 500 in another is ordinary, and asking for 100 there
+// sets *both* to 100 and destroys the larger stack. Anything driven by a
+// user clicking a specific stack must come through here instead.
+//
+// A count of zero empties the slot: IsEmpty already treats a non-positive
+// count as empty and GiveItem reuses such slots, so this needs no separate
+// "remove" call.
+func (w *World) SetSlotCount(container gvas.GUID, slot, count int32) error {
+	if count < 0 {
+		return fmt.Errorf("palsave: count %d is negative", count)
+	}
+	for _, s := range w.SlotsInContainer(container) {
+		if s.Slot == nil || s.Slot.Index != slot {
+			continue
+		}
+		s.Slot.Count = count
+		return nil
+	}
+	return fmt.Errorf("palsave: container %s has no slot %d", container, slot)
+}
+
 // AddItemCount adds to an existing stack, returning the new total.
 func (w *World) AddItemCount(container gvas.GUID, itemID string, delta int32) (int32, error) {
 	for _, s := range w.SlotsInContainer(container) {

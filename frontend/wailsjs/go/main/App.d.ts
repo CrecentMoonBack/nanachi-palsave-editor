@@ -61,11 +61,15 @@ export function SetPalWorkSuitability(arg1:string,arg2:string,arg3:number):Promi
 
 export function SetPlayerLevel(arg1:string,arg2:number):Promise<void>;
 
+export function SetPlayerSlotCount(arg1:string,arg2:number,arg3:number):Promise<void>;
+
 export function SetPlayerStat(arg1:string,arg2:string,arg3:string,arg4:number):Promise<void>;
 
 export function SetPlayerUnusedPoints(arg1:string,arg2:number):Promise<void>;
 
 export function SetRelic(arg1:string,arg2:string,arg3:number):Promise<void>;
+
+export function SetSlotCount(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function Status():Promise<main.Status>;
 

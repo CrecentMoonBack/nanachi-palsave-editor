@@ -445,3 +445,78 @@ func TestCampStorageEditSurvivesSaveAndReopen(t *testing.T) {
 			got-before, item, want, before, got)
 	}
 }
+
+// TestSetSlotCountEditsOneStackOfTwo is the reported bug at the app layer: a
+// box holding the same item in two slots could not be edited, because the
+// id-addressed call rewrote both and destroyed the larger stack.
+func TestSetSlotCountEditsOneStackOfTwo(t *testing.T) {
+	if _, err := os.Stat(fixture); err != nil {
+		t.Skip("no save fixture; see scripts/setup.sh --all")
+	}
+	a := NewApp()
+	if _, err := a.OpenSave(fixture); err != nil {
+		t.Fatal(err)
+	}
+	players, err := a.Players()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Find a box holding one item twice.
+	var box StorageInfo
+	var dup []ItemInfo
+	for _, p := range players {
+		boxes, err := a.BaseStorages(p.UID)
+		if err != nil {
+			continue
+		}
+		for _, b := range boxes {
+			byItem := map[string][]ItemInfo{}
+			for _, it := range b.Items {
+				byItem[it.ItemID] = append(byItem[it.ItemID], it)
+			}
+			for _, stacks := range byItem {
+				if len(stacks) > 1 && stacks[0].Count != stacks[1].Count {
+					box, dup = b, stacks
+					break
+				}
+			}
+			if dup != nil {
+				break
+			}
+		}
+		if dup != nil {
+			break
+		}
+	}
+	if dup == nil {
+		t.Skip("fixture has no box holding one item in two differently sized stacks")
+	}
+
+	target, other := dup[0], dup[1]
+	const want = 77
+	if err := a.SetSlotCount(box.ContainerID, int(target.Slot), want); err != nil {
+		t.Fatalf("SetSlotCount: %v", err)
+	}
+
+	got := map[int32]int32{}
+	for _, it := range a.describeContainer(mustGUID(t, box.ContainerID)) {
+		got[it.Slot] = it.Count
+	}
+	if got[target.Slot] != want {
+		t.Errorf("slot %d holds %d, want %d", target.Slot, got[target.Slot], want)
+	}
+	if got[other.Slot] != other.Count {
+		t.Errorf("the other stack in slot %d went from %d to %d; editing one stack must not touch its twin",
+			other.Slot, other.Count, got[other.Slot])
+	}
+}
+
+func mustGUID(t *testing.T, s string) gvas.GUID {
+	t.Helper()
+	g, err := gvas.ParseGUID(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return g
+}

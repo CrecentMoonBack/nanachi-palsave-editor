@@ -371,6 +371,40 @@ button.card:hover {
   text-align: center;
 }
 
+/* --- stack editing ------------------------------------------------------ */
+
+/* The clicked stack. Editing addresses a slot, not an item id, so the user
+   has to be able to see which of two identical stacks is selected. */
+.card.picked {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+
+.stack-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 10px;
+}
+.stack-field span {
+  color: var(--muted);
+  font-size: 12px;
+  width: 3em;
+}
+.stack-field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.stack-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.stack-actions .primary {
+  flex: 1;
+}
+
 /* --- Nanachi ------------------------------------------------------------ */
 
 .brand-avatar {

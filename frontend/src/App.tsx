@@ -11,6 +11,8 @@ import {
   BaseStorages,
   GiveContainerItem,
   SetContainerItemCount,
+  SetSlotCount,
+  SetPlayerSlotCount,
   GiveItem,
   Inventory,
   OpenSave,
@@ -1787,6 +1789,42 @@ function ItemsTab({
   const chosenBox = boxes.find((b) => b.containerId === box) ?? null;
   const shown = view === "camp" ? (chosenBox?.items ?? []) : items;
 
+  // The stack the user clicked. Held by slot rather than by object so it
+  // survives a refresh: after applying, the list is rebuilt and the old
+  // object is stale.
+  const [pickedSlot, setPickedSlot] = useState<number | null>(null);
+  const picked = shown.find((s) => s.slot === pickedSlot) ?? null;
+  const setPicked = (it: main.ItemInfo | null) =>
+    setPickedSlot(it ? it.slot : null);
+
+  // Switching container or view invalidates the selection: slot 3 in another
+  // box is a different stack entirely.
+  useEffect(() => {
+    setPickedSlot(null);
+  }, [view, box]);
+
+  async function applyStack(slot: number, count: number) {
+    setBusy(true);
+    try {
+      if (view === "camp") {
+        await SetSlotCount(box, slot, count);
+      } else {
+        await SetPlayerSlotCount(uid, slot, count);
+      }
+      say(
+        count === 0
+          ? `슬롯 ${slot} 비움`
+          : `슬롯 ${slot} → ${count.toLocaleString()}개`,
+      );
+      await onChanged();
+      if (view === "camp") await loadBoxes();
+    } catch (e: any) {
+      say(String(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   useEffect(() => {
     if (query.trim().length < 1) {
       setResults([]);
@@ -1866,9 +1904,10 @@ function ItemsTab({
             </select>
           </>
         )}
+        <label>추가</label>
         <input
           type="text"
-          placeholder="아이템 검색 (한글/영문)"
+          placeholder="없는 아이템도 검색 (한글/영문)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -1902,8 +1941,17 @@ function ItemsTab({
           정확히 이 수량으로
         </label>
         <button onClick={apply} disabled={busy || !chosen}>
-          적용
+          {exact ? "수량 지정" : "추가"}
         </button>
+      </div>
+
+      {/* This row adds items the player has never owned — the search covers
+          every item in the game, not just what is in the list below. That was
+          not obvious when it looked like a filter over the grid. */}
+      <div className="hint">
+        위 검색은 <b>가지고 있지 않은 아이템도</b> 찾습니다 — 고르고 <b>추가</b>를
+        누르면 빈 칸에 새로 만들어 넣습니다. 아래 목록에서 칸을 <b>클릭</b>하면
+        그 칸만 수량을 고칠 수 있습니다.
       </div>
 
       {view === "camp" && boxes.length === 0 ? (
@@ -1915,19 +1963,114 @@ function ItemsTab({
           {view === "camp" ? "이 보관함이 비어 있습니다." : "인벤토리가 비어 있습니다."}
         </div>
       ) : (
-        <div className="grid">
-          {shown.map((it) => (
-            <div key={`${it.slot}-${it.itemId}`} className="card">
-              <Icon file={it.icon} alt={it.name} />
-              <div className="info">
-                <div className="title">{it.name}</div>
-                <div className="sub">슬롯 {it.slot}</div>
-              </div>
-              <div className="count">{it.count.toLocaleString()}</div>
-            </div>
-          ))}
+        <div className="split">
+          <div className="grid">
+            {shown.map((it) => (
+              <button
+                key={`${it.slot}-${it.itemId}`}
+                className={`card ${picked?.slot === it.slot ? "picked" : ""}`}
+                onClick={() => setPicked(it)}
+              >
+                <Icon file={it.icon} alt={it.name} />
+                <div className="info">
+                  <div className="title">{it.name}</div>
+                  <div className="sub">슬롯 {it.slot}</div>
+                </div>
+                <div className="count">{it.count.toLocaleString()}</div>
+              </button>
+            ))}
+          </div>
+
+          {picked && (
+            <StackEditor
+              key={`${view}-${box}-${picked.slot}`}
+              stack={picked}
+              busy={busy}
+              onClose={() => setPicked(null)}
+              onApply={applyStack}
+            />
+          )}
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Edits one stack, addressed by the slot it sits in.
+ *
+ * Editing by item id cannot say "this one" when a box holds the same item
+ * twice — a chest with 9,999 crude oil in one slot and 500 in another is
+ * ordinary, and the id-addressed call would set both. So the click carries the
+ * slot number and the Go side writes only that slot.
+ */
+function StackEditor({
+  stack,
+  busy,
+  onClose,
+  onApply,
+}: {
+  stack: main.ItemInfo;
+  busy: boolean;
+  onClose: () => void;
+  onApply: (slot: number, count: number) => Promise<void>;
+}) {
+  const [count, setCount] = useState(stack.count);
+  const dirty = count !== stack.count;
+
+  return (
+    <div className="detail">
+      <div className="detail-head">
+        <Icon file={stack.icon} alt={stack.name} />
+        <div className="detail-title">{stack.name}</div>
+        <button className="ghost" onClick={onClose}>
+          닫기
+        </button>
+      </div>
+
+      <div className="hint">
+        슬롯 {stack.slot} · 현재 {stack.count.toLocaleString()}개
+      </div>
+
+      <label className="stack-field">
+        <span>수량</span>
+        <input
+          type="number"
+          min={0}
+          value={count}
+          autoFocus
+          onChange={(e) => setCount(Number(e.target.value))}
+        />
+      </label>
+
+      {/* No "max" button. The per-item stack ceiling is not in the reference
+          data, and a button built on a guessed cap is what overwrote a pal's
+          souls once already. These are just common round numbers. */}
+      <div className="chips">
+        {[1, 100, 999, 9999].map((n) => (
+          <button key={n} className="chip" onClick={() => setCount(n)}>
+            {n.toLocaleString()}
+          </button>
+        ))}
+      </div>
+
+      <div className="stack-actions">
+        <button
+          className="primary"
+          disabled={busy || !dirty || count < 0}
+          onClick={() => onApply(stack.slot, count)}
+        >
+          적용
+        </button>
+        <button
+          className="ghost"
+          disabled={busy || stack.count === 0}
+          onClick={() => onApply(stack.slot, 0)}
+          title="이 칸을 비웁니다"
+        >
+          비우기
+        </button>
+      </div>
+    </div>
   );
 }

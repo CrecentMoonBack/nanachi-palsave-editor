@@ -1232,6 +1232,17 @@ func (a *App) SetItemCount(uid, itemID string, count int) error {
 	return err
 }
 
+// SetPlayerSlotCount sets one stack in the player's own inventory, addressed
+// by slot. Same reasoning as SetSlotCount: a player can carry the same item in
+// two stacks just as a chest can.
+func (a *App) SetPlayerSlotCount(uid string, slot, count int) error {
+	cid, err := a.commonContainer(uid)
+	if err != nil {
+		return err
+	}
+	return a.world.SetSlotCount(cid, int32(slot), int32(count))
+}
+
 // GiveItem adds items, materialising a slot when none is free.
 func (a *App) GiveItem(uid, itemID string, count int) (int32, error) {
 	cid, err := a.commonContainer(uid)
@@ -1251,6 +1262,20 @@ func (a *App) SetContainerItemCount(containerID, itemID string, count int) error
 	}
 	_, err = a.world.SetItemCount(cid, itemID, int32(count))
 	return err
+}
+
+// SetSlotCount sets one stack, addressed by the slot it sits in.
+//
+// This is what clicking a stack in the UI uses. SetContainerItemCount above
+// addresses by item id, which rewrites every matching stack — fine for the
+// search-and-apply toolbar, wrong when a box holds the same item twice and
+// the user pointed at one of them.
+func (a *App) SetSlotCount(containerID string, slot, count int) error {
+	cid, err := a.namedContainer(containerID)
+	if err != nil {
+		return err
+	}
+	return a.world.SetSlotCount(cid, int32(slot), int32(count))
 }
 
 // GiveContainerItem adds items to any container, addressed by id.
