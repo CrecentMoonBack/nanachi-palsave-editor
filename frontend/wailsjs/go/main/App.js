@@ -6,10 +6,6 @@ export function ApplyPreset(arg1, arg2) {
   return window['go']['main']['App']['ApplyPreset'](arg1, arg2);
 }
 
-export function ApplyPresetToSpecies(arg1, arg2, arg3) {
-  return window['go']['main']['App']['ApplyPresetToSpecies'](arg1, arg2, arg3);
-}
-
 export function BaseCamps(arg1) {
   return window['go']['main']['App']['BaseCamps'](arg1);
 }

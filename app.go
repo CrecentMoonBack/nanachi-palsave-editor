@@ -864,48 +864,6 @@ func (a *App) ApplyPreset(instanceID, name string) ([]PassiveInfo, error) {
 	return nil, fmt.Errorf("그런 이름의 프리셋이 없습니다: %s", name)
 }
 
-// ApplyPresetToSpecies writes a preset onto every pal of one species owned by
-// a player, returning how many changed.
-//
-// This is the point of presets: the request behind them was that setting a
-// work set on a boxful of pals meant picking four traits over and over.
-func (a *App) ApplyPresetToSpecies(uid, speciesID, name string) (int, error) {
-	if a.world == nil {
-		return 0, fmt.Errorf("세이브가 열려 있지 않습니다")
-	}
-	owner, err := gvas.ParseGUID(uid)
-	if err != nil {
-		return 0, err
-	}
-	list, err := a.presets.all()
-	if err != nil {
-		return 0, err
-	}
-	for _, p := range list {
-		if !strings.EqualFold(p.Name, name) {
-			continue
-		}
-		if err := validatePassives(p.IDs); err != nil {
-			return 0, fmt.Errorf("프리셋 %q 을(를) 쓸 수 없습니다: %w", name, err)
-		}
-		n := 0
-		for _, c := range a.world.PalsOwnedBy(owner) {
-			if !strings.EqualFold(c.Pal.Species(), speciesID) {
-				continue
-			}
-			if err := c.Pal.SetPassives(p.IDs); err != nil {
-				return n, err
-			}
-			n++
-		}
-		if n == 0 {
-			return 0, fmt.Errorf("%s 종족의 팰이 없습니다", speciesID)
-		}
-		return n, nil
-	}
-	return 0, fmt.Errorf("그런 이름의 프리셋이 없습니다: %s", name)
-}
-
 // SearchPassives finds passives by id, Korean name or English name, for the
 // picker. An empty query returns the whole table, best tier first.
 func (a *App) SearchPassives(q string) []PassiveInfo {

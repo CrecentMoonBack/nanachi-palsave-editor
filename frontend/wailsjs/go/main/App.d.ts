@@ -5,8 +5,6 @@ import {paldata} from '../models';
 
 export function ApplyPreset(arg1:string,arg2:string):Promise<Array<main.PassiveInfo>>;
 
-export function ApplyPresetToSpecies(arg1:string,arg2:string,arg3:string):Promise<number>;
-
 export function BaseCamps(arg1:string):Promise<Array<main.CampInfo>>;
 
 export function BasePals(arg1:string):Promise<Array<main.PalInfo>>;

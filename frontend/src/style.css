@@ -754,3 +754,12 @@ button.apply {
   padding: 4px 9px;
   font-size: 12px;
 }
+
+/* toolbar separator ---------------------------------------------------- */
+
+.tb-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 0 4px;
+}

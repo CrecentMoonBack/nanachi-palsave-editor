@@ -363,6 +363,16 @@ function PalsTab({
   const [basePals, setBasePals] = useState<main.PalInfo[]>([]);
   const [editing, setEditing] = useState("");
   const [camp, setCamp] = useState(0); // 0 = every camp
+  const [presets, setPresets] = useState<main.PresetInfo[]>([]);
+  const [presetPick, setPresetPick] = useState("");
+
+  const loadPresets = useCallback(() => {
+    Presets()
+      .then(setPresets)
+      .catch((e) => say(String(e), true));
+  }, [say]);
+
+  useEffect(loadPresets, [loadPresets]);
 
   // Both rosters are fetched once and filtered here. They are a few hundred
   // entries already in memory on the Go side, so re-fetching per view would
@@ -412,7 +422,10 @@ function PalsTab({
   const afterEdit = useCallback(async () => {
     await onChanged();
     await load();
-  }, [onChanged, load]);
+    // The editor can create a preset, and the toolbar's list is fetched
+    // separately, so it would otherwise not see it until a remount.
+    loadPresets();
+  }, [onChanged, load, loadPresets]);
 
   // Applies to exactly the pals on screen. The old bulk call selected by owner
   // and species, which would have reached party pals while the palbox was
@@ -425,6 +438,31 @@ function PalsTab({
         await SetPalLevel(p.instanceId, level);
       }
       say(`${target?.name ?? pick} ${members.length}마리를 Lv${level} 로 변경`);
+      await afterEdit();
+    } catch (e: any) {
+      say(String(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Acts on the pals on screen, exactly like applyBulk and for the same
+  // reason: selecting by species alone would reach party pals while the
+  // palbox is showing.
+  async function applyPresetBulk() {
+    const preset = presets.find((p) => p.name === presetPick);
+    if (!preset || members.length === 0) return;
+    if (preset.stale) {
+      say(`프리셋 "${preset.name}" 에 알 수 없는 패시브가 있어 적용할 수 없습니다`, true);
+      return;
+    }
+    setBusy(true);
+    try {
+      const ids = preset.passives.map((x) => x.id);
+      for (const p of members) {
+        await SetPalPassives(p.instanceId, ids);
+      }
+      say(`${target?.name ?? pick} ${members.length}마리에 "${preset.name}" 적용`);
       await afterEdit();
     } catch (e: any) {
       say(String(e), true);
@@ -498,8 +536,39 @@ function PalsTab({
           onChange={(e) => setLevel(Number(e.target.value))}
         />
         <button onClick={applyBulk} disabled={busy || !pick}>
-          일괄 적용
+          레벨 일괄 적용
           {members.length ? ` (${members.length}마리)` : ""}
+        </button>
+
+        <span className="tb-sep" />
+
+        <label>패시브 프리셋</label>
+        <select
+          value={presetPick}
+          onChange={(e) => setPresetPick(e.target.value)}
+          title={
+            presets.length === 0
+              ? "팰 하나를 열어 패시브를 고른 뒤 저장하면 여기에 나옵니다"
+              : "저장해둔 패시브 조합"
+          }
+        >
+          <option value="">
+            {presets.length === 0 ? "저장된 조합 없음" : "선택…"}
+          </option>
+          {presets.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name}
+              {p.stale ? " (사용 불가)" : ""}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={applyPresetBulk}
+          disabled={busy || !pick || !presetPick}
+          title="선택한 종족 전체의 패시브를 이 조합으로 바꿉니다"
+        >
+          패시브 일괄 적용
+          {presetPick && members.length ? ` (${members.length}마리)` : ""}
         </button>
       </div>
 
