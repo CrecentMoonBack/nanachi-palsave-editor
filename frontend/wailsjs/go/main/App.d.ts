@@ -29,6 +29,8 @@ export function Players():Promise<Array<main.PlayerInfo>>;
 
 export function Presets():Promise<Array<main.PresetInfo>>;
 
+export function Relics(arg1:string):Promise<Array<main.RelicInfo>>;
+
 export function SavePreset(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function SaveToDisk():Promise<main.SaveResult>;
@@ -56,6 +58,8 @@ export function SetPlayerLevel(arg1:string,arg2:number):Promise<void>;
 export function SetPlayerStat(arg1:string,arg2:string,arg3:string,arg4:number):Promise<void>;
 
 export function SetPlayerUnusedPoints(arg1:string,arg2:number):Promise<void>;
+
+export function SetRelic(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function Status():Promise<main.Status>;
 

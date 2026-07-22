@@ -281,6 +281,24 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class RelicInfo {
+	    key: string;
+	    name: string;
+	    count: number;
+	    known: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RelicInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.name = source["name"];
+	        this.count = source["count"];
+	        this.known = source["known"];
+	    }
+	}
 	export class SaveInfo {
 	    path: string;
 	    format: string;
@@ -310,6 +328,7 @@ export namespace main {
 	export class SaveResult {
 	    backupPath: string;
 	    sizeBytes: number;
+	    playerSaves: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new SaveResult(source);
@@ -319,6 +338,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.backupPath = source["backupPath"];
 	        this.sizeBytes = source["sizeBytes"];
+	        this.playerSaves = source["playerSaves"];
 	    }
 	}
 	export class SpeciesSummary {

@@ -41,6 +41,11 @@ type App struct {
 type playerFile struct {
 	path string
 	save *palsave.PlayerSave
+	// dirty marks a player save the editor has changed. Player saves are read
+	// for every session but written only when something in them was edited,
+	// so an untouched one is never rewritten — even a byte-identical rewrite
+	// would replace a file the game owns for no reason.
+	dirty bool
 }
 
 func NewApp() *App {
@@ -1058,6 +1063,77 @@ func (a *App) SetPlayerStat(uid, track, key string, value int) error {
 	return c.Pal.SetStatusPoint(list, key, value)
 }
 
+// --- relics (statue of power) ---------------------------------------------
+
+// RelicInfo is one relic row of the player editor.
+type RelicInfo struct {
+	Key   string `json:"key"`
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+	Known bool   `json:"known"`
+}
+
+// Relics lists a player's relic counts, known types first in a fixed order,
+// then anything the save holds that the label table does not cover.
+func (a *App) Relics(uid string) ([]RelicInfo, error) {
+	pf, ok := a.players[uid]
+	if !ok {
+		return nil, fmt.Errorf("이 플레이어의 세이브 파일이 없습니다 (Players 폴더 확인)")
+	}
+	have := pf.save.Relics()
+
+	var out []RelicInfo
+	seen := map[string]bool{}
+	for _, r := range paldata.Relics() {
+		key := paldata.QualifyRelic(r.ID)
+		seen[key] = true
+		out = append(out, RelicInfo{
+			Key:   key,
+			Name:  r.NameKO,
+			Count: have[key],
+			Known: true,
+		})
+	}
+	for _, key := range pf.save.RelicOrder() {
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, RelicInfo{Key: key, Name: key, Count: have[key]})
+	}
+	return out, nil
+}
+
+// SetRelic sets one relic count on a player.
+//
+// Setting capture power also updates the standalone RelicPossessNum, which
+// mirrors it — see internal/palsave/relics.go.
+func (a *App) SetRelic(uid, relicType string, count int) error {
+	pf, ok := a.players[uid]
+	if !ok {
+		return fmt.Errorf("이 플레이어의 세이브 파일이 없습니다")
+	}
+	if _, known := paldata.RelicName(relicType); !known {
+		// Allow a type the save already holds even if the table lacks a label,
+		// but refuse an invented one — the key is written verbatim.
+		found := false
+		for _, k := range pf.save.RelicOrder() {
+			if k == relicType {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("알 수 없는 유물 종류입니다: %s", relicType)
+		}
+	}
+	if err := pf.save.SetRelic(relicType, count); err != nil {
+		return err
+	}
+	pf.dirty = true
+	return nil
+}
+
 // --- inventory ------------------------------------------------------------
 
 // ItemInfo is one inventory stack as the UI shows it.
@@ -1161,6 +1237,9 @@ func (a *App) SearchItems(q string) []ItemChoice {
 type SaveResult struct {
 	BackupPath string `json:"backupPath"`
 	SizeBytes  int    `json:"sizeBytes"`
+	// PlayerSaves is how many Players/<uid>.sav files were rewritten, which is
+	// zero unless something in one of them was edited.
+	PlayerSaves int `json:"playerSaves"`
 }
 
 // SaveToDisk writes the world back, taking a timestamped backup first.
@@ -1187,12 +1266,56 @@ func (a *App) SaveToDisk() (*SaveResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	backup := fmt.Sprintf("%s.%s.bak", a.levelPath, time.Now().Format("20060102-150405"))
+	stamp := time.Now().Format("20060102-150405")
+	backup := fmt.Sprintf("%s.%s.bak", a.levelPath, stamp)
 	if err := os.WriteFile(backup, orig, 0o644); err != nil {
 		return nil, fmt.Errorf("백업 실패: %w", err)
 	}
 	if err := os.WriteFile(a.levelPath, packed, 0o644); err != nil {
 		return nil, err
 	}
-	return &SaveResult{BackupPath: filepath.Base(backup), SizeBytes: len(packed)}, nil
+
+	res := &SaveResult{BackupPath: filepath.Base(backup), SizeBytes: len(packed)}
+	written, err := a.savePlayerFiles(stamp)
+	if err != nil {
+		// The world save is already on disk at this point, so report the
+		// failure rather than pretending the whole save succeeded.
+		return res, fmt.Errorf("월드 저장은 끝났지만 플레이어 세이브 저장 실패: %w", err)
+	}
+	res.PlayerSaves = written
+	return res, nil
+}
+
+// savePlayerFiles writes every player save the editor changed, each with its
+// own backup, and returns how many were written.
+func (a *App) savePlayerFiles(stamp string) (int, error) {
+	n := 0
+	for uid, pf := range a.players {
+		if !pf.dirty {
+			continue
+		}
+		raw, err := pf.save.Encode()
+		if err != nil {
+			return n, fmt.Errorf("%s 인코드 실패: %w", uid, err)
+		}
+		packed, err := oodle.CompressSav(raw, a.saveType)
+		if err != nil {
+			return n, fmt.Errorf("%s 압축 실패: %w", uid, err)
+		}
+
+		orig, err := os.ReadFile(pf.path)
+		if err != nil {
+			return n, err
+		}
+		backup := fmt.Sprintf("%s.%s.bak", pf.path, stamp)
+		if err := os.WriteFile(backup, orig, 0o644); err != nil {
+			return n, fmt.Errorf("%s 백업 실패: %w", uid, err)
+		}
+		if err := os.WriteFile(pf.path, packed, 0o644); err != nil {
+			return n, err
+		}
+		pf.dirty = false
+		n++
+	}
+	return n, nil
 }

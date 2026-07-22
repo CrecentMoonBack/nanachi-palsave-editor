@@ -54,6 +54,10 @@ export function Presets() {
   return window['go']['main']['App']['Presets']();
 }
 
+export function Relics(arg1) {
+  return window['go']['main']['App']['Relics'](arg1);
+}
+
 export function SavePreset(arg1, arg2) {
   return window['go']['main']['App']['SavePreset'](arg1, arg2);
 }
@@ -108,6 +112,10 @@ export function SetPlayerStat(arg1, arg2, arg3, arg4) {
 
 export function SetPlayerUnusedPoints(arg1, arg2) {
   return window['go']['main']['App']['SetPlayerUnusedPoints'](arg1, arg2);
+}
+
+export function SetRelic(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetRelic'](arg1, arg2, arg3);
 }
 
 export function Status() {

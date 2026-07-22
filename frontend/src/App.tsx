@@ -17,6 +17,8 @@ import {
   SetPlayerLevel,
   SetPlayerUnusedPoints,
   SetPlayerStat,
+  Relics,
+  SetRelic,
   Presets,
   SavePreset,
   DeletePreset,
@@ -151,7 +153,12 @@ export default function App() {
     try {
       const r = await SaveToDisk();
       setDirty(false);
-      say(`저장 완료 · ${r.sizeBytes.toLocaleString()} 바이트 · 백업 ${r.backupPath}`);
+      say(
+        `저장 완료 · ${r.sizeBytes.toLocaleString()} 바이트 · 백업 ${r.backupPath}` +
+          (r.playerSaves > 0
+            ? ` · 플레이어 세이브 ${r.playerSaves}개도 기록됨`
+            : "")
+      );
     } catch (e: any) {
       say(String(e), true);
     } finally {
@@ -1471,6 +1478,11 @@ function PlayerTab({
   const [unused, setUnused] = useState(0);
   const [stats, setStats] = useState<Record<string, number>>({});
   const [ex, setEx] = useState<Record<string, number>>({});
+  const [relics, setRelics] = useState<main.RelicInfo[]>([]);
+  const [relicVals, setRelicVals] = useState<Record<string, number>>({});
+  // Relics live in the player's own .sav, which may be absent even when
+  // the player exists in the world save.
+  const [relicErr, setRelicErr] = useState("");
 
   const load = useCallback(async () => {
     if (!uid) return;
@@ -1481,6 +1493,15 @@ function PlayerTab({
       setUnused(d.unused);
       setStats(Object.fromEntries((d.stats ?? []).map((s) => [s.key, s.value])));
       setEx(Object.fromEntries((d.ex ?? []).map((s) => [s.key, s.value])));
+      try {
+        const r = await Relics(uid);
+        setRelics(r);
+        setRelicVals(Object.fromEntries(r.map((x) => [x.key, x.count])));
+        setRelicErr("");
+      } catch (e: any) {
+        setRelics([]);
+        setRelicErr(String(e));
+      }
     } catch (e: any) {
       say(String(e), true);
     }
@@ -1503,6 +1524,10 @@ function PlayerTab({
       for (const s of detail.ex ?? []) {
         const next = ex[s.key] ?? 0;
         if (next !== s.value) await SetPlayerStat(uid, "ex", s.key, next);
+      }
+      for (const r of relics) {
+        const next = relicVals[r.key] ?? 0;
+        if (next !== r.count) await SetRelic(uid, r.key, next);
       }
       say(`${detail.name} 수정됨 · Lv${level}`);
       await onChanged();
@@ -1623,6 +1648,44 @@ function PlayerTab({
           </div>
         </div>
       )}
+
+      <div className="field-group">
+        <div className="group-title">유물</div>
+        <div className="hint">
+          리프몽 상 같은 유물을 바친 개수입니다. <b>포획률</b>이 힘의 석상으로
+          올리는 값입니다. 이 값들은 월드 세이브가 아니라 플레이어 세이브에
+          들어 있어, 저장하면 그 파일도 함께 기록됩니다(백업도 따로 남습니다).
+          <b> 상한은 확인하지 못했습니다</b> — 이 세이브에서 관측된 최대는 38입니다.
+        </div>
+        {relicErr ? (
+          <div className="muted small">{relicErr}</div>
+        ) : (
+          <div className="work-grid">
+            {relics.map((r) => (
+              <label
+                key={r.key}
+                className={`work-row ${(relicVals[r.key] ?? 0) === 0 ? "dim" : ""}`}
+              >
+                <span className="work-name" title={r.known ? r.key : "알 수 없는 항목"}>
+                  {r.name}
+                  {!r.known && <span className="badge warn">?</span>}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  value={relicVals[r.key] ?? 0}
+                  onChange={(e) =>
+                    setRelicVals({
+                      ...relicVals,
+                      [r.key]: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
 
       <button className="primary apply" onClick={apply} disabled={busy}>
         플레이어에 적용
