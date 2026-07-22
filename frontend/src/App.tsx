@@ -5,6 +5,7 @@ import nanachiIdle from "./assets/nanachi_idle.png";
 import nanachiWorking from "./assets/nanachi_working.png";
 import nanachiSuccess from "./assets/nanachi_success.png";
 import nanachiError from "./assets/nanachi_error.png";
+import { applyTheme, loadTheme, type Theme } from "./theme";
 import {
   BaseCamps,
   BasePals,
@@ -159,6 +160,11 @@ export default function App() {
   const [toast, setToast] = useState<{ msg: string; bad?: boolean } | null>(
     null,
   );
+  const [theme, setTheme] = useState<Theme>(loadTheme);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   const say = useCallback((msg: string, bad?: boolean) => {
     setToast({ msg, bad });
@@ -270,6 +276,14 @@ export default function App() {
         {save && <span className="path">{save.path}</span>}
         <span className="spacer" />
         {dirty && <span className="dirty">● 저장하지 않은 변경</span>}
+        <button
+          className="ghost icon-btn"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          title={theme === "dark" ? "밝은 테마로" : "어두운 테마로"}
+          aria-label={theme === "dark" ? "밝은 테마로" : "어두운 테마로"}
+        >
+          {theme === "dark" ? "☀" : "☾"}
+        </button>
         <button onClick={pickAndOpen} disabled={busy}>
           세이브 열기
         </button>

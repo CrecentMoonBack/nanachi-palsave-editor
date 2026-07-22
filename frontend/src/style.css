@@ -1,4 +1,36 @@
+/* Light is the default: the theme applies with no attribute set, so the very
+   first paint is already correct. Putting dark first and overriding it would
+   flash dark before the saved choice is read. */
 :root {
+  --bg: #f3f5fa;
+  --panel: #ffffff;
+  --panel-2: #eaeef6;
+  --line: #d3daea;
+  --text: #171f2e;
+  --muted: #5d6880;
+  --accent: #e09400;
+  --accent-dim: #a06b00;
+  --danger: #c9342f;
+  --ok: #227a52;
+
+  /* Inputs sit on panels, so they need their own surface rather than reusing
+     the page background — on light that would make them vanish into the card. */
+  --field: #ffffff;
+  --shadow: 0 8px 26px rgba(23, 31, 46, 0.14);
+  --shadow-lg: 0 18px 48px rgba(23, 31, 46, 0.2);
+  --overlay: rgba(23, 31, 46, 0.38);
+  /* Text placed on top of --accent or --danger. Both stay saturated in either
+     theme, so these do not change with it. */
+  --on-accent: #1a1400;
+  --on-danger: #ffffff;
+
+  font-family: "Pretendard", "Malgun Gothic", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+}
+
+:root[data-theme="dark"] {
   --bg: #12161f;
   --panel: #1a2030;
   --panel-2: #212939;
@@ -10,10 +42,10 @@
   --danger: #e05252;
   --ok: #4caf82;
 
-  font-family: "Pretendard", "Malgun Gothic", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, sans-serif;
-  font-size: 14px;
-  color: var(--text);
+  --field: #12161f;
+  --shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5);
+  --overlay: rgba(0, 0, 0, 0.55);
 }
 
 * {
@@ -51,7 +83,7 @@ button:disabled {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #1a1400;
+  color: var(--on-accent);
   font-weight: 600;
 }
 button.primary:hover:not(:disabled) {
@@ -62,7 +94,7 @@ input,
 select {
   font: inherit;
   color: inherit;
-  background: var(--bg);
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 7px 10px;
@@ -303,8 +335,8 @@ button.card:hover {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: var(--accent-dim);
-  color: #1a1400;
+  background: var(--accent);
+  color: var(--on-accent);
   margin-left: 5px;
 }
 
@@ -348,7 +380,7 @@ button.card:hover {
   border-radius: 8px;
   padding: 10px 16px;
   max-width: 70ch;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -450,7 +482,7 @@ button.card:hover {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 999px;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow);
   color: var(--muted);
   font-size: 12px;
   pointer-events: none;
@@ -838,8 +870,8 @@ button.apply {
   font-size: 12px;
 }
 .preset-use:hover {
-  background: var(--accent-dim);
-  color: #1a1400;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 .preset-del {
   border: none;
@@ -853,7 +885,7 @@ button.apply {
 }
 .preset-del:hover {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
 }
 
 .preset-new {
@@ -889,7 +921,7 @@ button.apply {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--overlay);
   display: grid;
   place-items: center;
   z-index: 50;
@@ -903,7 +935,7 @@ button.apply {
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-lg);
 }
 .modal-head {
   display: flex;
@@ -1010,7 +1042,7 @@ button.wide {
 }
 .badge.warn {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
 }
 .muted.small {
   font-size: 12px;
@@ -1193,4 +1225,14 @@ button.tiny {
 }
 .crash pre.dim {
   color: var(--muted);
+}
+
+/* Square button for a single glyph, so the theme toggle does not stretch to
+   the width of a worded button beside it. */
+.icon-btn {
+  width: 34px;
+  padding: 6px 0;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1;
 }
