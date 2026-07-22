@@ -365,6 +365,7 @@ function PalsTab({
   const [camp, setCamp] = useState(0); // 0 = every camp
   const [presets, setPresets] = useState<main.PresetInfo[]>([]);
   const [presetPick, setPresetPick] = useState("");
+  const [managing, setManaging] = useState(false);
 
   const loadPresets = useCallback(() => {
     Presets()
@@ -570,7 +571,20 @@ function PalsTab({
           패시브 일괄 적용
           {presetPick && members.length ? ` (${members.length}마리)` : ""}
         </button>
+        <button className="ghost" onClick={() => setManaging(true)}>
+          프리셋 관리
+        </button>
       </div>
+
+      {managing && (
+        <PresetManager
+          max={status?.maxPassives ?? 4}
+          presets={presets}
+          onClose={() => setManaging(false)}
+          onChanged={loadPresets}
+          say={say}
+        />
+      )}
 
       {cards.length === 0 ? (
         <div className="empty">
@@ -647,6 +661,8 @@ function PalsTab({
                   key={current.instanceId}
                   pal={current}
                   status={status}
+                  presets={presets}
+                  onManage={() => setManaging(true)}
                   busy={busy}
                   setBusy={setBusy}
                   say={say}
@@ -669,6 +685,8 @@ function PalsTab({
 function PalEditor({
   pal,
   status,
+  presets,
+  onManage,
   busy,
   setBusy,
   say,
@@ -676,6 +694,8 @@ function PalEditor({
 }: {
   pal: main.PalInfo;
   status: main.Status | null;
+  presets: main.PresetInfo[];
+  onManage: () => void;
   busy: boolean;
   setBusy: (b: boolean) => void;
   say: (m: string, bad?: boolean) => void;
@@ -900,7 +920,9 @@ function PalEditor({
       <PassivePicker
         chosen={passives}
         max={maxPassives}
+        presets={presets}
         onChange={setPassives}
+        onManage={onManage}
         say={say}
       />
 
@@ -911,53 +933,28 @@ function PalEditor({
   );
 }
 
-/** Search-and-pick for a pal's passive skills. */
-function PassivePicker({
+/**
+ * The passive chips plus their search box, with no notion of presets.
+ *
+ * Split out because the preset manager builds a set the same way the pal
+ * editor does, and a picker that knew about presets could not be used inside
+ * the thing that manages them.
+ */
+function PassiveChooser({
   chosen,
   max,
   onChange,
   say,
+  placeholder,
 }: {
   chosen: main.PassiveInfo[];
   max: number;
   onChange: (next: main.PassiveInfo[]) => void;
   say: (m: string, bad?: boolean) => void;
+  placeholder?: string;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<main.PassiveInfo[]>([]);
-  const [presets, setPresets] = useState<main.PresetInfo[]>([]);
-  const [naming, setNaming] = useState(false);
-  const [presetName, setPresetName] = useState("");
-
-  const reloadPresets = useCallback(() => {
-    Presets()
-      .then(setPresets)
-      .catch((e) => say(String(e), true));
-  }, [say]);
-
-  useEffect(reloadPresets, [reloadPresets]);
-
-  async function store() {
-    try {
-      await SavePreset(presetName, chosen.map((c) => c.id));
-      say(`프리셋 저장됨 · ${presetName}`);
-      setNaming(false);
-      setPresetName("");
-      reloadPresets();
-    } catch (e: any) {
-      say(String(e), true);
-    }
-  }
-
-  async function drop(name: string) {
-    try {
-      await DeletePreset(name);
-      say(`프리셋 삭제됨 · ${name}`);
-      reloadPresets();
-    } catch (e: any) {
-      say(String(e), true);
-    }
-  }
 
   useEffect(() => {
     if (!query.trim()) {
@@ -984,75 +981,7 @@ function PassivePicker({
   }
 
   return (
-    <div className="field-group">
-      <div className="group-title">
-        패시브 <span className="range">{chosen.length}/{max}</span>
-      </div>
-      <div className="hint">
-        칩을 누르면 빠지고, 아래에서 검색해 고르면 추가됩니다. 이름 위에 잠깐
-        올려두면 효과 설명이 뜹니다. 빨간 칩은 나쁜 패시브입니다.
-      </div>
-
-      <div className="preset-bar">
-        <span className="preset-label">프리셋</span>
-        {presets.length === 0 && (
-          <span className="muted">저장된 조합 없음</span>
-        )}
-        {presets.map((p) => (
-          <span
-            key={p.name}
-            className={`preset ${p.stale ? "stale" : ""}`}
-            title={
-              (p.stale ? "알 수 없는 패시브가 들어 있습니다 — " : "") +
-              p.passives.map((x) => x.name).join(", ")
-            }
-          >
-            <button className="preset-use" onClick={() => onChange(p.passives)}>
-              {p.name}
-            </button>
-            <button
-              className="preset-del"
-              title="프리셋 삭제"
-              onClick={() => drop(p.name)}
-            >
-              ×
-            </button>
-          </span>
-        ))}
-        {naming ? (
-          <span className="preset-new">
-            <input
-              type="text"
-              autoFocus
-              placeholder="이름"
-              value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") store();
-                if (e.key === "Escape") setNaming(false);
-              }}
-            />
-            <button onClick={store}>저장</button>
-            <button className="ghost" onClick={() => setNaming(false)}>
-              취소
-            </button>
-          </span>
-        ) : (
-          <button
-            className="ghost preset-add"
-            disabled={chosen.length === 0}
-            title={
-              chosen.length === 0
-                ? "패시브를 고른 뒤 저장할 수 있습니다"
-                : "지금 고른 조합을 프리셋으로 저장"
-            }
-            onClick={() => setNaming(true)}
-          >
-            + 현재 조합 저장
-          </button>
-        )}
-      </div>
-
+    <>
       <div className="chips">
         {chosen.length === 0 && <span className="muted">없음</span>}
         {chosen.map((p) => (
@@ -1069,7 +998,7 @@ function PassivePicker({
 
       <input
         type="text"
-        placeholder="패시브 검색 (한글/영문)"
+        placeholder={placeholder ?? "패시브 검색 (한글/영문)"}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
@@ -1091,6 +1020,230 @@ function PassivePicker({
           ))}
         </div>
       )}
+    </>
+  );
+}
+
+/** The pal editor's passive section: a chooser plus one-click preset recall. */
+function PassivePicker({
+  chosen,
+  max,
+  presets,
+  onChange,
+  onManage,
+  say,
+}: {
+  chosen: main.PassiveInfo[];
+  max: number;
+  presets: main.PresetInfo[];
+  onChange: (next: main.PassiveInfo[]) => void;
+  onManage: () => void;
+  say: (m: string, bad?: boolean) => void;
+}) {
+  return (
+    <div className="field-group">
+      <div className="group-title">
+        패시브{" "}
+        <span className="range">
+          {chosen.length}/{max}
+        </span>
+      </div>
+      <div className="hint">
+        칩을 누르면 빠지고, 아래에서 검색해 고르면 추가됩니다. 이름 위에 잠깐
+        올려두면 효과 설명이 뜹니다. 빨간 칩은 나쁜 패시브입니다.
+      </div>
+
+      <div className="preset-bar">
+        <span className="preset-label">프리셋</span>
+        {presets.length === 0 && <span className="muted">없음</span>}
+        {presets.map((p) => (
+          <button
+            key={p.name}
+            className={`preset-use solo ${p.stale ? "stale" : ""}`}
+            title={
+              (p.stale ? "알 수 없는 패시브가 들어 있습니다 — " : "") +
+              p.passives.map((x) => x.name).join(", ")
+            }
+            disabled={p.stale}
+            onClick={() => onChange(p.passives)}
+          >
+            {p.name}
+          </button>
+        ))}
+        <button className="ghost preset-add" onClick={onManage}>
+          프리셋 관리
+        </button>
+      </div>
+
+      <PassiveChooser
+        chosen={chosen}
+        max={max}
+        onChange={onChange}
+        say={say}
+      />
+    </div>
+  );
+}
+
+/**
+ * Build and keep passive sets without touching a pal.
+ *
+ * Presets are not pal data — they are the user's own shortcuts — so making one
+ * should not require opening a pal first, which is what the first version made
+ * you do.
+ */
+function PresetManager({
+  max,
+  presets,
+  onClose,
+  onChanged,
+  say,
+}: {
+  max: number;
+  presets: main.PresetInfo[];
+  onClose: () => void;
+  onChanged: () => void;
+  say: (m: string, bad?: boolean) => void;
+}) {
+  const [name, setName] = useState("");
+  const [chosen, setChosen] = useState<main.PassiveInfo[]>([]);
+  const [editing, setEditing] = useState("");
+
+  function startNew() {
+    setEditing("");
+    setName("");
+    setChosen([]);
+  }
+
+  function startEdit(p: main.PresetInfo) {
+    setEditing(p.name);
+    setName(p.name);
+    setChosen(p.passives);
+  }
+
+  async function store() {
+    try {
+      await SavePreset(
+        name,
+        chosen.map((c) => c.id)
+      );
+      // Renaming means the old entry would otherwise linger under its old name.
+      if (editing && editing !== name.trim()) {
+        await DeletePreset(editing);
+      }
+      say(`프리셋 저장됨 · ${name}`);
+      startNew();
+      onChanged();
+    } catch (e: any) {
+      say(String(e), true);
+    }
+  }
+
+  async function drop(target: string) {
+    try {
+      await DeletePreset(target);
+      say(`프리셋 삭제됨 · ${target}`);
+      if (editing === target) startNew();
+      onChanged();
+    } catch (e: any) {
+      say(String(e), true);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="modal-title">패시브 프리셋</span>
+          <button className="ghost" onClick={onClose}>
+            닫기
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="preset-list">
+            <div className="section-title">저장된 조합</div>
+            {presets.length === 0 && (
+              <div className="muted small">아직 없습니다.</div>
+            )}
+            {presets.map((p) => (
+              <div
+                key={p.name}
+                className={`preset-item ${editing === p.name ? "active" : ""} ${
+                  p.stale ? "stale" : ""
+                }`}
+              >
+                <button className="preset-open" onClick={() => startEdit(p)}>
+                  <div className="preset-item-name">
+                    {p.name}
+                    {p.stale && <span className="badge warn">사용 불가</span>}
+                  </div>
+                  <div className="preset-item-sub">
+                    {p.passives.map((x) => x.name).join(", ")}
+                  </div>
+                </button>
+                <button
+                  className="preset-del"
+                  title="삭제"
+                  onClick={() => drop(p.name)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <button className="ghost wide" onClick={startNew}>
+              + 새 프리셋
+            </button>
+          </div>
+
+          <div className="preset-form">
+            <div className="section-title">
+              {editing ? `"${editing}" 수정` : "새 프리셋"}
+            </div>
+
+            <label className="form-row">
+              <span>이름</span>
+              <input
+                type="text"
+                placeholder="예: 작업용"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+
+            <div className="form-row col">
+              <span>
+                패시브{" "}
+                <span className="range">
+                  {chosen.length}/{max}
+                </span>
+              </span>
+              <PassiveChooser
+                chosen={chosen}
+                max={max}
+                onChange={setChosen}
+                say={say}
+                placeholder="패시브 검색해서 추가"
+              />
+            </div>
+
+            <button
+              className="primary"
+              onClick={store}
+              disabled={!name.trim() || chosen.length === 0}
+              title={
+                !name.trim()
+                  ? "이름을 입력하세요"
+                  : chosen.length === 0
+                  ? "패시브를 하나 이상 고르세요"
+                  : ""
+              }
+            >
+              {editing ? "저장" : "만들기"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

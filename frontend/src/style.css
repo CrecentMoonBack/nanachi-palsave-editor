@@ -763,3 +763,135 @@ button.apply {
   background: var(--line);
   margin: 0 4px;
 }
+
+/* preset manager ------------------------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+  padding: 24px;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  width: min(880px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-title {
+  font-weight: 600;
+  flex: 1;
+}
+.modal-body {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  padding: 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-right: 1px solid var(--line);
+  padding-right: 14px;
+}
+.preset-item {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.preset-item.active {
+  border-color: var(--accent-dim);
+}
+.preset-item.stale {
+  border-color: var(--danger);
+}
+.preset-open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 10px;
+}
+.preset-open:hover {
+  background: var(--panel-2);
+}
+.preset-item-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preset-item-sub {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preset-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.form-row.col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.form-row > span {
+  color: var(--muted);
+  font-size: 12px;
+  flex: none;
+}
+.form-row input[type="text"] {
+  flex: 1;
+}
+
+.preset-use.solo {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.preset-use.solo.stale {
+  border-color: var(--danger);
+  opacity: 0.55;
+}
+button.wide {
+  width: 100%;
+}
+.badge.warn {
+  background: var(--danger);
+  color: #fff;
+}
+.muted.small {
+  font-size: 12px;
+}

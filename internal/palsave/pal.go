@@ -303,18 +303,28 @@ func (p *Pal) ContainerID() (gvas.GUID, bool) {
 	return gvas.GUID(*g), true
 }
 
-// MaxRankBonus is how far one stat can be raised with pal souls. Ten is the
-// game's cap, worth +3% each.
-const MaxRankBonus = 10
+// MaxRankBonus is how far one stat can be raised with pal souls.
+//
+// Ten was wrong. The live save holds two pals with Rank_Attack at 20, and the
+// user reports the game itself showing 20 on a fully-souled pal, so the old
+// bound was refusing values the game produces — the UI clamped legitimate
+// pals down and the setter rejected them outright.
+//
+// Twenty is what has actually been observed, not a figure from the game's
+// data files, which we have no copy of. If a pal ever turns up above it, this
+// is the number to revisit rather than a reason to drop the check: an
+// unbounded write is how a save ends up holding something the game will not
+// load.
+const MaxRankBonus = 20
 
 // RankBonus reports how many souls have been spent on one stat.
 func (p *Pal) RankBonus(name string) int { return p.rawByte(name) }
 
 // SetRankBonus sets one of the souls-upgrade counters.
 //
-// The bound is the game's 0..10, not the byte's 0..255: a higher value is not
-// a stronger pal, it is a number the game will clamp or reject, and writing it
-// only makes the save disagree with what the UI showed.
+// The bound is MaxRankBonus rather than the byte's 0..255: past the game's own
+// limit a higher number is not a stronger pal, just a value the game clamps or
+// refuses, leaving the save disagreeing with what the UI showed.
 func (p *Pal) SetRankBonus(name string, value int) error {
 	if value < 0 || value > MaxRankBonus {
 		return fmt.Errorf("palsave: %s value %d out of range 0..%d", name, value, MaxRankBonus)
