@@ -72,6 +72,11 @@ mkdir -p "$DEST"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# Both branches leave the icons somewhere and set SRC to it. Nothing is copied
+# per file: spawning a process per icon costs far more than moving the bytes,
+# especially under Git Bash on Windows where each spawn is tens of milliseconds
+# and a virus scanner watches every one. 2,400 of those is minutes of silence
+# with no output, which reads exactly like a hang.
 if [ -n "$REMOTE" ]; then
     # An existing checkout over ssh. Faster when you already have one, which is
     # the maintainer's case; nobody else has this.
@@ -86,6 +91,7 @@ if [ -n "$REMOTE" ]; then
     echo "copying as a single stream..."
     ssh -o BatchMode=yes "$REMOTE" "cd '$REMOTE_DIR' && tar cf - *.webp" \
         | tar xf - -C "$TMP"
+    SRC=$TMP
 else
     # The public repository. A plain clone would pull ~380 MB for the 34 MB we
     # want, so this takes only the one directory: no blobs up front, sparse
@@ -95,23 +101,23 @@ else
     echo "fetching (about 34 MB)..."
     git clone --quiet --depth 1 --filter=blob:none --sparse "$UPSTREAM" "$TMP/src"
     git -C "$TMP/src" sparse-checkout set --no-cone "$UPSTREAM_DIR"
-    if [ ! -d "$TMP/src/$UPSTREAM_DIR" ]; then
+    SRC=$TMP/src/$UPSTREAM_DIR
+    if [ ! -d "$SRC" ]; then
         echo "upstream layout changed: $UPSTREAM_DIR not found." >&2
         exit 1
     fi
-    # Top level only — img/app/ is that project's own branding.
-    find "$TMP/src/$UPSTREAM_DIR" -maxdepth 1 -type f -name '*.webp' \
-        -exec cp -f {} "$TMP/" \;
 fi
 
-count=$(find "$TMP" -maxdepth 1 -type f -name '*.webp' | wc -l | tr -d ' ')
+count=$(find "$SRC" -maxdepth 1 -type f -name '*.webp' | wc -l | tr -d ' ')
 if [ "$count" -eq 0 ]; then
     echo "no icons were fetched." >&2
     exit 1
 fi
-# Staged through a temp dir so an interrupted fetch cannot leave half-written
-# files in assets/icons for the app to serve.
-cp -f "$TMP"/*.webp "$DEST/"
+
+# One cp for the lot. The glob matches only the top level, so img/app/ — that
+# project's own branding — is left behind without needing a filter.
+echo "installing $count icons..."
+cp -f "$SRC"/*.webp "$DEST/"
 
 after=$(find "$DEST" -maxdepth 1 -type f -name '*.webp' | wc -l | tr -d ' ')
 size=$(du -sh "$DEST" | cut -f1)
