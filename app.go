@@ -473,6 +473,11 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 	} else {
 		info.Location = a.palLocation(uid, p)
 	}
+	// Built empty rather than left nil: a nil slice marshals to JSON null, the
+	// generated TypeScript still says PassiveInfo[], and the first `.length`
+	// in the UI throws and blanks the whole window. Fifty pals in the live
+	// save carry no passives at all, so this is the common case, not an edge.
+	info.Passives = make([]PassiveInfo, 0, len(p.Passives()))
 	for _, id := range p.Passives() {
 		info.Passives = append(info.Passives, describePassive(id))
 	}

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
+	"regexp"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -668,5 +670,81 @@ func TestSearchPalsPutsOrdinaryPalsFirst(t *testing.T) {
 		if !p.IsPal {
 			t.Errorf("result %d (%s) is not a pal", i, c.ID)
 		}
+	}
+}
+
+// nullField finds a JSON field whose value is null.
+var nullField = regexp.MustCompile(`"(\w+)":null`)
+
+// nullCollector returns a sink for one endpoint's result. Go only spreads a
+// multi-value call when it is the sole argument, so the label is bound first
+// and the (value, error) pair is passed on its own.
+func nullCollector(t *testing.T, found map[string]int, what string) func(any, error) {
+	t.Helper()
+	return func(v any, err error) {
+		if err != nil {
+			return
+		}
+		b, e := json.Marshal(v)
+		if e != nil {
+			t.Errorf("%s: marshal: %v", what, e)
+			return
+		}
+		for _, m := range nullField.FindAllStringSubmatch(string(b), -1) {
+			found[what+"."+m[1]]++
+		}
+	}
+}
+
+// TestNoAPIReturnsNullSlices is the bug that turned the window black.
+//
+// A nil Go slice marshals to JSON null. The generated TypeScript still types
+// the field as an array, so the UI calls .length on it, React throws during
+// render, and the entire app blanks — not just the pal that was clicked.
+// Fifty pals in the live save carry no passive skills, so every one of them
+// was a black screen waiting to happen.
+//
+// Checking one field would only fix the one already found, so this walks the
+// JSON of every read endpoint and fails on any null at all.
+func TestNoAPIReturnsNullSlices(t *testing.T) {
+	if _, err := os.Stat(fixture); err != nil {
+		t.Skip("no save fixture; see scripts/setup.sh --all")
+	}
+	a := NewApp()
+	if _, err := a.OpenSave(fixture); err != nil {
+		t.Fatal(err)
+	}
+	players, err := a.Players()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := map[string]int{}
+	sink := func(what string) func(any, error) { return nullCollector(t, found, what) }
+	for _, p := range players {
+		sink("Pals")(a.Pals(p.UID))
+		sink("PalSpecies")(a.PalSpecies(p.UID))
+		sink("BaseCamps")(a.BaseCamps(p.UID))
+		sink("BasePals")(a.BasePals(p.UID))
+		sink("BaseStorages")(a.BaseStorages(p.UID))
+		sink("Inventory")(a.Inventory(p.UID))
+		sink("PlayerDetail")(a.PlayerDetail(p.UID))
+		sink("Relics")(a.Relics(p.UID))
+	}
+	sink("SearchPals")(a.SearchPals(""), nil)
+	sink("SearchItems")(a.SearchItems("wood"), nil)
+	sink("SearchPassives")(a.SearchPassives(""), nil)
+	sink("Presets")(a.Presets())
+
+	if len(found) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(found))
+	for k := range found {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		t.Errorf("%s serialises as null %d times; the UI treats it as an array", k, found[k])
 	}
 }

@@ -77,6 +77,59 @@ const SOULS = [
   { prop: "Rank_CraftSpeed", label: "작업속도", field: "soulCraftSpeed" },
 ] as const;
 
+/**
+ * A dialog that closes on a click outside it, on Escape, or on its close
+ * button.
+ *
+ * "Click outside" has to mean the press *and* the release happened outside.
+ * A plain onClick on the backdrop does not: dragging inside a number field and
+ * letting go past the edge of the dialog sends mousedown to the input and
+ * mouseup to the backdrop, and the browser fires the click on their nearest
+ * common ancestor — the backdrop. The dialog then closes while the user is
+ * only selecting a value, losing everything they had filled in.
+ */
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  // Where the press started. Only a press that began on the backdrop counts.
+  const [downOnBackdrop, setDownOnBackdrop] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => setDownOnBackdrop(e.target === e.currentTarget)}
+      onMouseUp={(e) => {
+        if (downOnBackdrop && e.target === e.currentTarget) onClose();
+        setDownOnBackdrop(false);
+      }}
+    >
+      <div className="modal">
+        <div className="modal-head">
+          <span className="modal-title">{title}</span>
+          <button className="ghost" onClick={onClose}>
+            닫기
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /** Icons are optional: the folder may be absent, so every image falls back. */
 function Icon({ file, alt }: { file: string; alt: string }) {
   const [failed, setFailed] = useState(false);
@@ -103,7 +156,9 @@ export default function App() {
   const [items, setItems] = useState<main.ItemInfo[]>([]);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; bad?: boolean } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; bad?: boolean } | null>(
+    null,
+  );
 
   const say = useCallback((msg: string, bad?: boolean) => {
     setToast({ msg, bad });
@@ -132,7 +187,7 @@ export default function App() {
         `불러옴 · 플레이어 ${info.playerCount}명, 팰 ${info.palCount}마리` +
           (info.playerSaves < info.playerCount
             ? ` · 플레이어 세이브 ${info.playerSaves}개만 발견됨`
-            : "")
+            : ""),
       );
     } catch (e: any) {
       say(String(e), true);
@@ -180,7 +235,7 @@ export default function App() {
         `저장 완료 · ${r.sizeBytes.toLocaleString()} 바이트 · 백업 ${r.backupPath}` +
           (r.playerSaves > 0
             ? ` · 플레이어 세이브 ${r.playerSaves}개도 기록됨`
-            : "")
+            : ""),
       );
     } catch (e: any) {
       say(String(e), true);
@@ -205,7 +260,12 @@ export default function App() {
   return (
     <div className="app">
       <div className="topbar">
-        <img src={nanachiFace} alt="" className="brand-avatar" aria-hidden="true" />
+        <img
+          src={nanachiFace}
+          alt=""
+          className="brand-avatar"
+          aria-hidden="true"
+        />
         <h1>나나치의 팰월드 세이브 에디터</h1>
         {save && <span className="path">{save.path}</span>}
         <span className="spacer" />
@@ -351,7 +411,12 @@ function Welcome({
 }) {
   return (
     <div className="welcome">
-      <img src={nanachiIdle} alt="" className="welcome-mascot" aria-hidden="true" />
+      <img
+        src={nanachiIdle}
+        alt=""
+        className="welcome-mascot"
+        aria-hidden="true"
+      />
       <h2>세이브 파일을 여세요</h2>
       <p>
         서버의 <code>Level.sav</code> 를 고르면 같은 폴더의 <code>Players</code>{" "}
@@ -365,7 +430,9 @@ function Welcome({
         <div className="statusline">
           <span>
             <span className={`dot ${status.codecOk ? "ok" : "bad"}`} />
-            {status.codecOk ? "Oodle 코덱 정상" : "코덱 없음 — 세이브를 열 수 없습니다"}
+            {status.codecOk
+              ? "Oodle 코덱 정상"
+              : "코덱 없음 — 세이브를 열 수 없습니다"}
           </span>
           <span>
             <span className={`dot ${status.iconsOk ? "ok" : "warn"}`} />
@@ -381,7 +448,6 @@ function Welcome({
     </div>
   );
 }
-
 
 type PalView = "box" | "party" | "base";
 
@@ -412,7 +478,7 @@ function summarise(pals: main.PalInfo[]): main.SpeciesSummary[] {
     s.maxLevel = Math.max(s.maxLevel, p.level);
   }
   return [...by.values()].sort((a, b) =>
-    a.count !== b.count ? b.count - a.count : a.name.localeCompare(b.name)
+    a.count !== b.count ? b.count - a.count : a.name.localeCompare(b.name),
   );
 }
 
@@ -535,7 +601,10 @@ function PalsTab({
     const preset = presets.find((p) => p.name === presetPick);
     if (!preset || members.length === 0) return;
     if (preset.stale) {
-      say(`프리셋 "${preset.name}" 에 알 수 없는 패시브가 있어 적용할 수 없습니다`, true);
+      say(
+        `프리셋 "${preset.name}" 에 알 수 없는 패시브가 있어 적용할 수 없습니다`,
+        true,
+      );
       return;
     }
     setBusy(true);
@@ -544,7 +613,9 @@ function PalsTab({
       for (const p of members) {
         await SetPalPassives(p.instanceId, ids);
       }
-      say(`${target?.name ?? pick} ${members.length}마리에 "${preset.name}" 적용`);
+      say(
+        `${target?.name ?? pick} ${members.length}마리에 "${preset.name}" 적용`,
+      );
       await afterEdit();
     } catch (e: any) {
       say(String(e), true);
@@ -574,7 +645,6 @@ function PalsTab({
   // What the detail editor works on: the ticked pals when there are any,
   // otherwise the single row that was opened.
   const editTargets = picked.length > 0 ? picked : current ? [current] : [];
-
 
   return (
     <>
@@ -676,7 +746,10 @@ function PalsTab({
 
         <span className="tb-sep" />
 
-        <button onClick={() => setAdding(true)} title="가지고 있지 않은 팰을 팰박스에 새로 만들어 넣습니다">
+        <button
+          onClick={() => setAdding(true)}
+          title="가지고 있지 않은 팰을 팰박스에 새로 만들어 넣습니다"
+        >
           팰 추가
         </button>
       </div>
@@ -706,8 +779,8 @@ function PalsTab({
           {view === "party"
             ? "파티에 팰이 없습니다."
             : view === "base"
-            ? "이 거점에는 팰이 없습니다."
-            : "팰박스가 비어 있습니다."}
+              ? "이 거점에는 팰이 없습니다."
+              : "팰박스가 비어 있습니다."}
         </div>
       ) : (
         <div className="split">
@@ -763,7 +836,7 @@ function PalsTab({
                       setSelected(
                         e.target.checked
                           ? new Set(members.map((p) => p.instanceId))
-                          : new Set()
+                          : new Set(),
                       )
                     }
                   />
@@ -839,7 +912,6 @@ function PalsTab({
   );
 }
 
-
 /**
  * Edits one pal. Values are held locally and written on 적용 rather than on
  * every keystroke, so a half-typed number never reaches the save.
@@ -904,7 +976,7 @@ function PalEditor({
   // Keyed by bare job id, holding only what a book added — the species base is
   // display context and is never written.
   const [work, setWork] = useState<Record<string, number>>(() =>
-    Object.fromEntries((pal.work ?? []).map((w) => [w.id, w.bonus]))
+    Object.fromEntries((pal.work ?? []).map((w) => [w.id, w.bonus])),
   );
 
   // Which groups apply. Everything is on for a single pal; nothing is on for a
@@ -929,7 +1001,7 @@ function PalEditor({
         if (on.passives) {
           await SetPalPassives(
             t.instanceId,
-            passives.map((p) => p.id)
+            passives.map((p) => p.id),
           );
         }
         if (on.level) await SetPalLevel(t.instanceId, level);
@@ -969,7 +1041,13 @@ function PalEditor({
     setRank(maxRank);
     setTalents(Object.fromEntries(TALENTS.map((t) => [t.prop, maxTalent])));
     setSouls(Object.fromEntries(SOULS.map((s) => [s.prop, maxSoul])));
-    setOn((o) => ({ ...o, level: true, rank: true, talents: true, souls: true }));
+    setOn((o) => ({
+      ...o,
+      level: true,
+      rank: true,
+      talents: true,
+      souls: true,
+    }));
   }
 
   // A per-group tick, shown only when editing several pals.
@@ -1103,12 +1181,11 @@ function PalEditor({
 
       <div className={`field-group ${many && !on.souls ? "off" : ""}`}>
         <div className="group-title">
-          <Gate k="souls" />
-          팰 영혼 <span className="range">0–{maxSoul}</span>
+          <Gate k="souls" />팰 영혼 <span className="range">0–{maxSoul}</span>
         </div>
         <div className="hint">
-          팰 영혼 아이템을 먹여 올리는 강화로, 항목마다 따로 쌓입니다.
-          개체값과 달리 게임 안에서도 올릴 수 있는 값입니다.
+          팰 영혼 아이템을 먹여 올리는 강화로, 항목마다 따로 쌓입니다. 개체값과
+          달리 게임 안에서도 올릴 수 있는 값입니다.
         </div>
         <div className="stat-grid">
           {SOULS.map((s) => (
@@ -1135,9 +1212,10 @@ function PalEditor({
           노동 적성 <span className="range">0–{maxWork}</span>
         </div>
         <div className="hint">
-          적성 향상서를 먹여 올리는 값입니다. 세이브에는 <b>책으로 더한 분량만</b>
-          기록되고, 종족이 원래 가진 적성은 따로입니다. 둘을 합치면 게임에서
-          몇 등급으로 보이는지는 아직 확인하지 못해서, 여기서는 각각 그대로
+          적성 향상서를 먹여 올리는 값입니다. 세이브에는{" "}
+          <b>책으로 더한 분량만</b>
+          기록되고, 종족이 원래 가진 적성은 따로입니다. 둘을 합치면 게임에서 몇
+          등급으로 보이는지는 아직 확인하지 못해서, 여기서는 각각 그대로
           보여줍니다.
           {many && " 여러 종족을 함께 고르면 기본 적성은 첫 팰 기준입니다."}
         </div>
@@ -1340,12 +1418,7 @@ function PassivePicker({
         </button>
       </div>
 
-      <PassiveChooser
-        chosen={chosen}
-        max={max}
-        onChange={onChange}
-        say={say}
-      />
+      <PassiveChooser chosen={chosen} max={max} onChange={onChange} say={say} />
     </div>
   );
 }
@@ -1390,7 +1463,7 @@ function PresetManager({
     try {
       await SavePreset(
         name,
-        chosen.map((c) => c.id)
+        chosen.map((c) => c.id),
       );
       // Renaming means the old entry would otherwise linger under its old name.
       if (editing && editing !== name.trim()) {
@@ -1416,100 +1489,91 @@ function PresetManager({
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <span className="modal-title">패시브 프리셋</span>
-          <button className="ghost" onClick={onClose}>
-            닫기
+    <Modal title="패시브 프리셋" onClose={onClose}>
+      <div className="modal-body">
+        <div className="preset-list">
+          <div className="section-title">저장된 조합</div>
+          {presets.length === 0 && (
+            <div className="muted small">아직 없습니다.</div>
+          )}
+          {presets.map((p) => (
+            <div
+              key={p.name}
+              className={`preset-item ${editing === p.name ? "active" : ""} ${
+                p.stale ? "stale" : ""
+              }`}
+            >
+              <button className="preset-open" onClick={() => startEdit(p)}>
+                <div className="preset-item-name">
+                  {p.name}
+                  {p.stale && <span className="badge warn">사용 불가</span>}
+                </div>
+                <div className="preset-item-sub">
+                  {p.passives.map((x) => x.name).join(", ")}
+                </div>
+              </button>
+              <button
+                className="preset-del"
+                title="삭제"
+                onClick={() => drop(p.name)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button className="ghost wide" onClick={startNew}>
+            + 새 프리셋
           </button>
         </div>
 
-        <div className="modal-body">
-          <div className="preset-list">
-            <div className="section-title">저장된 조합</div>
-            {presets.length === 0 && (
-              <div className="muted small">아직 없습니다.</div>
-            )}
-            {presets.map((p) => (
-              <div
-                key={p.name}
-                className={`preset-item ${editing === p.name ? "active" : ""} ${
-                  p.stale ? "stale" : ""
-                }`}
-              >
-                <button className="preset-open" onClick={() => startEdit(p)}>
-                  <div className="preset-item-name">
-                    {p.name}
-                    {p.stale && <span className="badge warn">사용 불가</span>}
-                  </div>
-                  <div className="preset-item-sub">
-                    {p.passives.map((x) => x.name).join(", ")}
-                  </div>
-                </button>
-                <button
-                  className="preset-del"
-                  title="삭제"
-                  onClick={() => drop(p.name)}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <button className="ghost wide" onClick={startNew}>
-              + 새 프리셋
-            </button>
+        <div className="preset-form">
+          <div className="section-title">
+            {editing ? `"${editing}" 수정` : "새 프리셋"}
           </div>
 
-          <div className="preset-form">
-            <div className="section-title">
-              {editing ? `"${editing}" 수정` : "새 프리셋"}
-            </div>
+          <label className="form-row">
+            <span>이름</span>
+            <input
+              type="text"
+              placeholder="예: 작업용"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
 
-            <label className="form-row">
-              <span>이름</span>
-              <input
-                type="text"
-                placeholder="예: 작업용"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-
-            <div className="form-row col">
-              <span>
-                패시브{" "}
-                <span className="range">
-                  {chosen.length}/{max}
-                </span>
+          <div className="form-row col">
+            <span>
+              패시브{" "}
+              <span className="range">
+                {chosen.length}/{max}
               </span>
-              <PassiveChooser
-                chosen={chosen}
-                max={max}
-                onChange={setChosen}
-                say={say}
-                placeholder="패시브 검색해서 추가"
-              />
-            </div>
+            </span>
+            <PassiveChooser
+              chosen={chosen}
+              max={max}
+              onChange={setChosen}
+              say={say}
+              placeholder="패시브 검색해서 추가"
+            />
+          </div>
 
-            <button
-              className="primary"
-              onClick={store}
-              disabled={!name.trim() || chosen.length === 0}
-              title={
-                !name.trim()
-                  ? "이름을 입력하세요"
-                  : chosen.length === 0
+          <button
+            className="primary"
+            onClick={store}
+            disabled={!name.trim() || chosen.length === 0}
+            title={
+              !name.trim()
+                ? "이름을 입력하세요"
+                : chosen.length === 0
                   ? "패시브를 하나 이상 고르세요"
                   : ""
-              }
-            >
-              {editing ? "저장" : "만들기"}
-            </button>
-          </div>
+            }
+          >
+            {editing ? "저장" : "만들기"}
+          </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1556,7 +1620,9 @@ function PlayerTab({
       setDetail(d);
       setLevel(d.level);
       setUnused(d.unused);
-      setStats(Object.fromEntries((d.stats ?? []).map((s) => [s.key, s.value])));
+      setStats(
+        Object.fromEntries((d.stats ?? []).map((s) => [s.key, s.value])),
+      );
       setEx(Object.fromEntries((d.ex ?? []).map((s) => [s.key, s.value])));
       try {
         const r = await Relics(uid);
@@ -1661,14 +1727,18 @@ function PlayerTab({
       <div className="field-group">
         <div className="group-title">스테이터스</div>
         <div className="hint">
-          레벨업으로 얻은 포인트를 넣은 값입니다. <b>상한은 아직 확인하지
-          못했습니다</b> — 이 세이브에서 관측된 최대는 20입니다. 게임이 받아들이지
-          않는 값을 넣으면 되돌려지거나 무시될 수 있습니다.
+          레벨업으로 얻은 포인트를 넣은 값입니다.{" "}
+          <b>상한은 아직 확인하지 못했습니다</b> — 이 세이브에서 관측된 최대는
+          20입니다. 게임이 받아들이지 않는 값을 넣으면 되돌려지거나 무시될 수
+          있습니다.
         </div>
         <div className="work-grid">
           {(detail.stats ?? []).map((s) => (
             <label key={s.key} className="work-row">
-              <span className="work-name" title={s.known ? s.key : "알 수 없는 항목"}>
+              <span
+                className="work-name"
+                title={s.known ? s.key : "알 수 없는 항목"}
+              >
                 {s.name}
                 {!s.known && <span className="badge warn">?</span>}
               </span>
@@ -1690,13 +1760,16 @@ function PlayerTab({
           <div className="group-title">추가 스테이터스</div>
           <div className="hint">
             일반 스테이터스와 별개로 쌓이는 값입니다. 관측된 최대는 40으로 위쪽
-            목록보다 훨씬 높아, 같은 척도가 아닙니다. <b>상한은 확인하지
-            못했습니다.</b>
+            목록보다 훨씬 높아, 같은 척도가 아닙니다.{" "}
+            <b>상한은 확인하지 못했습니다.</b>
           </div>
           <div className="work-grid">
             {(detail.ex ?? []).map((s) => (
               <label key={s.key} className="work-row">
-                <span className="work-name" title={s.known ? s.key : "알 수 없는 항목"}>
+                <span
+                  className="work-name"
+                  title={s.known ? s.key : "알 수 없는 항목"}
+                >
                   {s.name}
                   {!s.known && <span className="badge warn">?</span>}
                 </span>
@@ -1718,9 +1791,10 @@ function PlayerTab({
         <div className="group-title">유물</div>
         <div className="hint">
           리프몽 상 같은 유물을 바친 개수입니다. <b>포획률</b>이 힘의 석상으로
-          올리는 값입니다. 이 값들은 월드 세이브가 아니라 플레이어 세이브에
-          들어 있어, 저장하면 그 파일도 함께 기록됩니다(백업도 따로 남습니다).
-          <b> 상한은 확인하지 못했습니다</b> — 이 세이브에서 관측된 최대는 38입니다.
+          올리는 값입니다. 이 값들은 월드 세이브가 아니라 플레이어 세이브에 들어
+          있어, 저장하면 그 파일도 함께 기록됩니다(백업도 따로 남습니다).
+          <b> 상한은 확인하지 못했습니다</b> — 이 세이브에서 관측된 최대는
+          38입니다.
         </div>
         {relicErr ? (
           <div className="muted small">{relicErr}</div>
@@ -1731,7 +1805,10 @@ function PlayerTab({
                 key={r.key}
                 className={`work-row ${(relicVals[r.key] ?? 0) === 0 ? "dim" : ""}`}
               >
-                <span className="work-name" title={r.known ? r.key : "알 수 없는 항목"}>
+                <span
+                  className="work-name"
+                  title={r.known ? r.key : "알 수 없는 항목"}
+                >
                   {r.name}
                   {!r.known && <span className="badge warn">?</span>}
                 </span>
@@ -1866,13 +1943,17 @@ function ItemsTab({
       if (exact) {
         if (view === "camp") await SetContainerItemCount(box, chosen.id, count);
         else await SetItemCount(uid, chosen.id, count);
-        say(`${where}: ${chosen.name} 을(를) ${count.toLocaleString()}개로 설정`);
+        say(
+          `${where}: ${chosen.name} 을(를) ${count.toLocaleString()}개로 설정`,
+        );
       } else {
         const slot =
           view === "camp"
             ? await GiveContainerItem(box, chosen.id, count)
             : await GiveItem(uid, chosen.id, count);
-        say(`${where}: ${chosen.name} +${count.toLocaleString()} → 슬롯 ${slot}`);
+        say(
+          `${where}: ${chosen.name} +${count.toLocaleString()} → 슬롯 ${slot}`,
+        );
       }
       await onChanged();
       if (view === "camp") await loadBoxes();
@@ -1969,9 +2050,9 @@ function ItemsTab({
           every item in the game, not just what is in the list below. That was
           not obvious when it looked like a filter over the grid. */}
       <div className="hint">
-        위 검색은 <b>가지고 있지 않은 아이템도</b> 찾습니다 — 고르고 <b>추가</b>를
-        누르면 빈 칸에 새로 만들어 넣습니다. 아래 목록에서 칸을 <b>클릭</b>하면
-        그 칸만 수량을 고칠 수 있습니다.
+        위 검색은 <b>가지고 있지 않은 아이템도</b> 찾습니다 — 고르고 <b>추가</b>
+        를 누르면 빈 칸에 새로 만들어 넣습니다. 아래 목록에서 칸을 <b>클릭</b>
+        하면 그 칸만 수량을 고칠 수 있습니다.
       </div>
 
       {view === "camp" && boxes.length === 0 ? (
@@ -1980,7 +2061,9 @@ function ItemsTab({
         </div>
       ) : shown.length === 0 ? (
         <div className="empty">
-          {view === "camp" ? "이 보관함이 비어 있습니다." : "인벤토리가 비어 있습니다."}
+          {view === "camp"
+            ? "이 보관함이 비어 있습니다."
+            : "인벤토리가 비어 있습니다."}
         </div>
       ) : (
         <div className="split">
@@ -2165,128 +2248,119 @@ function AddPalDialog({
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <span className="modal-title">팰 추가</span>
-          <button className="ghost" onClick={onClose}>
-            닫기
+    <Modal title="팰 추가" onClose={onClose}>
+      <div className="modal-body add-pal">
+        <div className="hint">
+          가지고 있지 않은 팰을 <b>팰박스</b>에 새로 만들어 넣습니다.
+          {space !== null && ` 남은 칸 ${room.toLocaleString()}개.`}
+        </div>
+
+        <input
+          type="text"
+          placeholder="팰 검색 (한글/영문)"
+          value={query}
+          autoFocus
+          onChange={(e) => setQuery(e.target.value)}
+        />
+
+        <div className="pal-picker">
+          {results.length === 0 && (
+            <div className="empty">검색 결과가 없습니다.</div>
+          )}
+          {results.map((p) => (
+            <button
+              key={p.id}
+              className={`card ${chosen?.id === p.id ? "picked" : ""}`}
+              onClick={() => setChosen(p)}
+            >
+              <Icon file={p.icon} alt={p.name} />
+              <div className="info">
+                <div className="title">{p.name}</div>
+                {/* Several entries share a Korean name — the tower bosses
+                      come as a trainer-and-pal pair per difficulty — so the
+                      game's own id is what tells them apart. */}
+                <div className="sub">{p.id}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <div className="stat-grid">
+          <label>
+            <span>
+              레벨 <span className="range">1–{maxLevel}</span>
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={maxLevel}
+              value={level}
+              onChange={(e) => setLevel(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            <span>
+              응축 <span className="range">1–{maxRank}</span>
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={maxRank}
+              value={rank}
+              onChange={(e) => setRank(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            <span>마리 수</span>
+            <input
+              type="number"
+              min={1}
+              value={count}
+              onChange={(e) => setCount(Number(e.target.value))}
+            />
+          </label>
+        </div>
+
+        <div className="section-title">
+          개체값 <span className="range">0–{maxTalent}</span>
+        </div>
+        <div className="stat-grid">
+          {TALENTS.map((t) => (
+            <label key={t.prop}>
+              <span>{t.label}</span>
+              <input
+                type="number"
+                min={0}
+                max={maxTalent}
+                value={talents[t.prop] ?? 0}
+                onChange={(e) =>
+                  setTalents({ ...talents, [t.prop]: Number(e.target.value) })
+                }
+              />
+            </label>
+          ))}
+        </div>
+
+        {tooMany && (
+          <div className="hint bad">
+            팰박스에 {room.toLocaleString()}칸밖에 없습니다.
+          </div>
+        )}
+
+        <div className="stack-actions">
+          <button
+            className="primary"
+            disabled={working || !chosen || count < 1 || tooMany}
+            onClick={create}
+          >
+            {chosen ? `${chosen.name} ${count}마리 추가` : "팰을 고르세요"}
           </button>
         </div>
 
-        <div className="modal-body add-pal">
-          <div className="hint">
-            가지고 있지 않은 팰을 <b>팰박스</b>에 새로 만들어 넣습니다.
-            {space !== null && ` 남은 칸 ${room.toLocaleString()}개.`}
-          </div>
-
-          <input
-            type="text"
-            placeholder="팰 검색 (한글/영문)"
-            value={query}
-            autoFocus
-            onChange={(e) => setQuery(e.target.value)}
-          />
-
-          <div className="pal-picker">
-            {results.length === 0 && (
-              <div className="empty">검색 결과가 없습니다.</div>
-            )}
-            {results.map((p) => (
-              <button
-                key={p.id}
-                className={`card ${chosen?.id === p.id ? "picked" : ""}`}
-                onClick={() => setChosen(p)}
-              >
-                <Icon file={p.icon} alt={p.name} />
-                <div className="info">
-                  <div className="title">{p.name}</div>
-                  {/* Several entries share a Korean name — the tower bosses
-                      come as a trainer-and-pal pair per difficulty — so the
-                      game's own id is what tells them apart. */}
-                  <div className="sub">{p.id}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <div className="stat-grid">
-            <label>
-              <span>
-                레벨 <span className="range">1–{maxLevel}</span>
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={maxLevel}
-                value={level}
-                onChange={(e) => setLevel(Number(e.target.value))}
-              />
-            </label>
-            <label>
-              <span>
-                응축 <span className="range">1–{maxRank}</span>
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={maxRank}
-                value={rank}
-                onChange={(e) => setRank(Number(e.target.value))}
-              />
-            </label>
-            <label>
-              <span>마리 수</span>
-              <input
-                type="number"
-                min={1}
-                value={count}
-                onChange={(e) => setCount(Number(e.target.value))}
-              />
-            </label>
-          </div>
-
-          <div className="section-title">
-            개체값 <span className="range">0–{maxTalent}</span>
-          </div>
-          <div className="stat-grid">
-            {TALENTS.map((t) => (
-              <label key={t.prop}>
-                <span>{t.label}</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={maxTalent}
-                  value={talents[t.prop] ?? 0}
-                  onChange={(e) =>
-                    setTalents({ ...talents, [t.prop]: Number(e.target.value) })
-                  }
-                />
-              </label>
-            ))}
-          </div>
-
-          {tooMany && (
-            <div className="hint bad">
-              팰박스에 {room.toLocaleString()}칸밖에 없습니다.
-            </div>
-          )}
-
-          <div className="stack-actions">
-            <button
-              className="primary"
-              disabled={working || !chosen || count < 1 || tooMany}
-              onClick={create}
-            >
-              {chosen ? `${chosen.name} ${count}마리 추가` : "팰을 고르세요"}
-            </button>
-          </div>
-
-          <div className="hint">
-            패시브는 추가한 뒤 개별 편집 화면에서 붙이면 됩니다.
-          </div>
+        <div className="hint">
+          패시브는 추가한 뒤 개별 편집 화면에서 붙이면 됩니다.
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
