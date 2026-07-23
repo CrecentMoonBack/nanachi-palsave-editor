@@ -86,12 +86,12 @@ func TestSetFriendshipRoundTrips(t *testing.T) {
 		if withProp == nil {
 			t.Skip("no pal with a FriendshipPoint property")
 		}
-		if err := withProp.SetFriendship(500000); err != nil {
+		if err := withProp.SetFriendship(150000); err != nil {
 			t.Fatalf("SetFriendship: %v", err)
 		}
 		out := reencode(t, withProp, opts)
-		if got := out.Friendship(); got != 500000 {
-			t.Errorf("friendship = %d, want 500000", got)
+		if got := out.Friendship(); got != 150000 {
+			t.Errorf("friendship = %d, want 150000", got)
 		}
 	})
 
@@ -161,7 +161,7 @@ func TestFriendshipLeavesOtherPalsAlone(t *testing.T) {
 		t.Skip("not enough pals in the fixture")
 	}
 
-	if err := pals[0].pal.SetFriendship(777777); err != nil {
+	if err := pals[0].pal.SetFriendship(177777); err != nil {
 		t.Fatal(err)
 	}
 	for i, s := range pals[1:] {

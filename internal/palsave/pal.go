@@ -334,13 +334,12 @@ func (p *Pal) SetRankBonus(name string, value int) error {
 
 // MaxFriendship bounds the friendship point value.
 //
-// Friendship rises with time spent together and unlocks at set thresholds; the
-// game's UI shows it as a heart gauge, not the raw number. The stored value is
-// an int32 and the real ceiling is unknown, so this is a loose guard against
-// nonsense rather than a claim about the game — the same stance the pal soul
-// and player status caps take, and for the same reason: refusing a real value
-// is how an overtight bound destroyed data before.
-const MaxFriendship = 9_999_999
+// Friendship rises with time spent together and the game's UI shows it as a
+// heart gauge, not the raw number. 200,000 is the ceiling — the gauge fills
+// there and the stored value stops climbing (user-confirmed against the live
+// save). Values above it are refused rather than clamped, the same as every
+// other bound here.
+const MaxFriendship = 200_000
 
 // Friendship reports the pal's accumulated friendship points.
 //
