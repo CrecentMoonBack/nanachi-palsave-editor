@@ -281,7 +281,7 @@ type PalInfo struct {
 	// Gender is "Male", "Female", or "" when the save records none — eleven
 	// pals in the live save have no Gender at all.
 	Gender string `json:"gender"`
-	Icon       string `json:"icon"`
+	Icon   string `json:"icon"`
 
 	Level int   `json:"level"`
 	Exp   int64 `json:"exp"`
@@ -298,6 +298,10 @@ type PalInfo struct {
 	SoulDefence    int `json:"soulDefence"`
 	SoulCraftSpeed int `json:"soulCraftSpeed"`
 	SoulHP         int `json:"soulHp"`
+
+	// Friendship is accumulated friendship points. The game shows this as a
+	// heart gauge; the raw number is what the save stores.
+	Friendship int `json:"friendship"`
 
 	// Location is where the pal is kept: "box", "party", "base" or "" when the
 	// save records no slot at all.
@@ -469,6 +473,8 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 		SoulDefence:    p.RankBonus(palsave.RankDefence),
 		SoulCraftSpeed: p.RankBonus(palsave.RankCraftSpeed),
 		SoulHP:         p.RankBonus(palsave.RankHP),
+
+		Friendship: p.Friendship(),
 
 		Name: species,
 	}
@@ -896,6 +902,15 @@ func (a *App) SetPalRankBonus(instanceID, name string, value int) error {
 		return fmt.Errorf("알 수 없는 강화 항목입니다: %s", name)
 	}
 	return p.SetRankBonus(name, value)
+}
+
+// SetPalFriendship sets a pal's friendship points.
+func (a *App) SetPalFriendship(instanceID string, value int) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	return p.SetFriendship(value)
 }
 
 // The property names the UI may write. Both setters take a name straight from

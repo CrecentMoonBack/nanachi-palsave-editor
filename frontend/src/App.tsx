@@ -41,6 +41,7 @@ import {
   SetPalPassives,
   SetPalRank,
   SetPalRankBonus,
+  SetPalFriendship,
   SetPalTalent,
   SetPalWorkSuitability,
   SetPalGender,
@@ -982,6 +983,7 @@ function PalEditor({
     Talent_Shot: pal.talentShot,
     Talent_Defense: pal.talentDefense,
   });
+  const [friendship, setFriendship] = useState(pal.friendship);
   const [souls, setSouls] = useState<Record<string, number>>({
     Rank_HP: pal.soulHp,
     Rank_Attack: pal.soulAttack,
@@ -1004,6 +1006,7 @@ function PalEditor({
     rank: !many,
     talents: !many,
     souls: !many,
+    friendship: !many,
     work: !many,
     passives: !many,
     traits: !many,
@@ -1042,6 +1045,9 @@ function PalEditor({
             await SetPalRankBonus(t.instanceId, x.prop, souls[x.prop]);
           }
         }
+        if (on.friendship) {
+          await SetPalFriendship(t.instanceId, friendship);
+        }
         if (on.work) {
           // Written against this pal's own rows, not the seed's: a mixed
           // selection has different jobs per species.
@@ -1073,6 +1079,8 @@ function PalEditor({
       rank: true,
       talents: true,
       souls: true,
+      // Friendship is left out: it has no max, so "전부 최대" has nothing
+      // sensible to set it to.
     }));
   }
 
@@ -1264,6 +1272,29 @@ function PalEditor({
               />
             </label>
           ))}
+        </div>
+      </div>
+
+      <div className={`field-group ${many && !on.friendship ? "off" : ""}`}>
+        <div className="group-title">
+          <Gate k="friendship" />
+          신뢰도 <span className="range">친밀도</span>
+        </div>
+        <div className="hint">
+          함께 지낸 시간이 쌓이는 값으로, 게임에서는 하트 게이지로 보입니다.
+          여기서는 저장된 원래 숫자를 그대로 다룹니다. <b>상한은 확인하지
+          못했습니다</b> — 이 세이브에서 관측된 최대는 189,500입니다.
+        </div>
+        <div className="field-row">
+          <input
+            type="number"
+            min={0}
+            value={friendship}
+            onChange={(e) => {
+              setFriendship(Number(e.target.value));
+              enable("friendship");
+            }}
+          />
         </div>
       </div>
 

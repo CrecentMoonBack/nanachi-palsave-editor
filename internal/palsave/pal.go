@@ -332,6 +332,50 @@ func (p *Pal) SetRankBonus(name string, value int) error {
 	return p.setRawByte(name, uint8(value))
 }
 
+// MaxFriendship bounds the friendship point value.
+//
+// Friendship rises with time spent together and unlocks at set thresholds; the
+// game's UI shows it as a heart gauge, not the raw number. The stored value is
+// an int32 and the real ceiling is unknown, so this is a loose guard against
+// nonsense rather than a claim about the game — the same stance the pal soul
+// and player status caps take, and for the same reason: refusing a real value
+// is how an overtight bound destroyed data before.
+const MaxFriendship = 9_999_999
+
+// Friendship reports the pal's accumulated friendship points.
+//
+// Absent means zero: a freshly caught pal has no FriendshipPoint property
+// until it earns some, so the default is 0 rather than an error.
+func (p *Pal) Friendship() int {
+	v, ok := p.params.Get("FriendshipPoint")
+	if !ok {
+		return 0
+	}
+	if ip, ok := v.(*gvas.IntProperty); ok {
+		return int(ip.Value)
+	}
+	return 0
+}
+
+// SetFriendship sets the friendship point total, creating the property when
+// the pal has none yet.
+func (p *Pal) SetFriendship(value int) error {
+	if value < 0 || value > MaxFriendship {
+		return fmt.Errorf("palsave: friendship %d out of range 0..%d", value, MaxFriendship)
+	}
+	v, ok := p.params.Get("FriendshipPoint")
+	if !ok {
+		p.params.Set("FriendshipPoint", &gvas.IntProperty{Value: int32(value)})
+		return nil
+	}
+	ip, ok := v.(*gvas.IntProperty)
+	if !ok {
+		return fmt.Errorf("palsave: FriendshipPoint is %T, want *gvas.IntProperty", v)
+	}
+	ip.Value = int32(value)
+	return nil
+}
+
 // Passives lists the pal's passive skill ids.
 func (p *Pal) Passives() []string {
 	v, ok := p.params.Get("PassiveSkillList")
