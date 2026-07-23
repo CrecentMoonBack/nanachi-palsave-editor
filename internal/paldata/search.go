@@ -20,6 +20,21 @@ func Pals() []*Pal {
 	return palList
 }
 
+// ItemsOfType returns every item whose type_b matches, in sort order. Used to
+// find a same-category donor when creating a per-instance item the save has
+// never held — a weapon's state record has the shape of its category, not its
+// specific id.
+func ItemsOfType(typeB string) []*Item {
+	load()
+	var out []*Item
+	for _, it := range itemList {
+		if it.TypeB == typeB {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
 // SearchItems returns the items whose id, Korean name or English name contains
 // q, case-insensitively. An empty query returns everything.
 func SearchItems(q string) []*Item {
