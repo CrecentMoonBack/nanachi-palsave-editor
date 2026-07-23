@@ -49,6 +49,8 @@ export function SearchPals(arg1:string):Promise<Array<main.PalChoice>>;
 
 export function SearchPassives(arg1:string):Promise<Array<main.PassiveInfo>>;
 
+export function SearchSkills(arg1:string):Promise<Array<main.SkillInfo>>;
+
 export function SetContainerItemCount(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function SetItemCount(arg1:string,arg2:string,arg3:number):Promise<void>;
@@ -66,6 +68,8 @@ export function SetPalPassives(arg1:string,arg2:Array<string>):Promise<void>;
 export function SetPalRank(arg1:string,arg2:number):Promise<void>;
 
 export function SetPalRankBonus(arg1:string,arg2:string,arg3:number):Promise<void>;
+
+export function SetPalSkills(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function SetPalTalent(arg1:string,arg2:string,arg3:number):Promise<void>;
 

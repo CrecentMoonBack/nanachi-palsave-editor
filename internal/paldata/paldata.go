@@ -19,7 +19,7 @@ import (
 	"sync"
 )
 
-//go:embed data/items.json data/pals.json data/elements.json data/passives.json data/work_suitability.json
+//go:embed data/items.json data/pals.json data/elements.json data/passives.json data/skills.json data/work_suitability.json
 var files embed.FS
 
 // iconExt is the extension of the artwork the GUI looks for in assets/icons/.
@@ -112,6 +112,22 @@ type Passive struct {
 // differently from a beneficial one.
 func (p *Passive) IsNegative() bool { return p.Rank < 0 }
 
+// Skill is one active (waza) skill a pal can equip. The table key is the bare
+// name — "AcidRain" — while the save stores "EPalWazaID::AcidRain"; the prefix
+// is added and stripped at the palsave boundary.
+type Skill struct {
+	ID      string `json:"-"`
+	NameKO  string `json:"name_ko"`
+	NameEN  string `json:"name_en"`
+	Element string `json:"element"`
+	// Type is the delivery, e.g. "Shot" or "Melee".
+	Type string `json:"type"`
+	// Power is the skill's base power; 0 for utility moves.
+	Power int `json:"power"`
+	// Unique marks a species' signature move (id begins Unique_).
+	Unique bool `json:"unique"`
+}
+
 // Element is one of the nine damage types, with its Korean label and colour.
 type Element struct {
 	ID        string `json:"-"`
@@ -127,6 +143,7 @@ var (
 	pals     map[string]*Pal
 	elements map[string]*Element
 	passives map[string]*Passive
+	skills   map[string]*Skill
 
 	// workBase holds each species' innate job ranks, keyed by bare job name.
 	// Species with no job at all are absent.
@@ -140,6 +157,7 @@ var (
 	itemList    []*Item
 	palList     []*Pal
 	passiveList []*Passive
+	skillList   []*Skill
 )
 
 // load parses the embedded tables. A failure here means the embedded JSON is
@@ -151,6 +169,7 @@ func load() {
 		mustJSON("data/pals.json", &pals)
 		mustJSON("data/elements.json", &elements)
 		mustJSON("data/passives.json", &passives)
+		mustJSON("data/skills.json", &skills)
 		mustJSON("data/work_suitability.json", &workBase)
 
 		itemList = make([]*Item, 0, len(items))
@@ -169,6 +188,11 @@ func load() {
 		for id, p := range passives {
 			p.ID = id
 			passiveList = append(passiveList, p)
+		}
+		skillList = make([]*Skill, 0, len(skills))
+		for id, sk := range skills {
+			sk.ID = id
+			skillList = append(skillList, sk)
 		}
 		for id, e := range elements {
 			e.ID = id
@@ -266,6 +290,23 @@ func LookupPassive(id string) (*Passive, bool) {
 	load()
 	p, ok := passives[id]
 	return p, ok
+}
+
+// LookupSkill returns the entry for an active skill's bare name ("AcidRain").
+func LookupSkill(id string) (*Skill, bool) {
+	load()
+	s, ok := skills[id]
+	return s, ok
+}
+
+// SkillName returns the Korean name for an active skill's bare name. See
+// PalName on ok.
+func SkillName(id string) (string, bool) {
+	s, ok := LookupSkill(id)
+	if !ok || s.NameKO == "" {
+		return "", false
+	}
+	return s.NameKO, true
 }
 
 // LookupElement returns the entry for an element name such as "Dark".

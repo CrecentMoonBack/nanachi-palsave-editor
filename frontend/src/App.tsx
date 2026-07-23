@@ -24,6 +24,7 @@ import {
   SaveToDisk,
   SearchItems,
   SearchPassives,
+  SearchSkills,
   SearchPals,
   AddPal,
   PalboxSpace,
@@ -39,6 +40,7 @@ import {
   SetItemCount,
   SetPalLevel,
   SetPalPassives,
+  SetPalSkills,
   SetPalRank,
   SetPalRankBonus,
   SetPalFriendship,
@@ -991,6 +993,7 @@ function PalEditor({
     Rank_CraftSpeed: pal.soulCraftSpeed,
   });
   const [passives, setPassives] = useState<main.PassiveInfo[]>(pal.passives);
+  const [skills, setSkills] = useState<main.SkillInfo[]>(pal.skills ?? []);
   const [gender, setGender] = useState(pal.gender);
   const [alpha, setAlpha] = useState(pal.isBoss);
   // Keyed by bare job id, holding only what a book added — the species base is
@@ -1009,6 +1012,7 @@ function PalEditor({
     friendship: !many,
     work: !many,
     passives: !many,
+    skills: !many,
     traits: !many,
   });
   const enable = (k: string) => setOn((o) => ({ ...o, [k]: true }));
@@ -1024,6 +1028,12 @@ function PalEditor({
           await SetPalPassives(
             t.instanceId,
             passives.map((p) => p.id),
+          );
+        }
+        if (on.skills) {
+          await SetPalSkills(
+            t.instanceId,
+            skills.map((s) => s.id),
           );
         }
         if (on.traits) {
@@ -1352,6 +1362,25 @@ function PalEditor({
         />
       </div>
 
+      <div className={`field-group ${many && !on.skills ? "off" : ""}`}>
+        <div className="group-title">
+          {many ? <Gate k="skills" /> : null}
+          액티브 스킬 <span className="range">{skills.length}/3</span>
+        </div>
+        <div className="hint">
+          팰이 장착하는 공격 기술입니다. 칩을 누르면 빠지고, 아래에서 검색해
+          고르면 추가됩니다. 스킬 열매로 붙이는 것과 같은 것이며, 최대 3개입니다.
+        </div>
+        <SkillChooser
+          chosen={skills}
+          onChange={(next) => {
+            setSkills(next);
+            enable("skills");
+          }}
+          say={say}
+        />
+      </div>
+
       <button
         className="primary apply"
         onClick={apply}
@@ -1447,6 +1476,101 @@ function PassiveChooser({
                 {p.name}
               </span>
               <span className="desc">{p.desc}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Picks a pal's equipped active skills — the moves given by skill fruit. Up to
+ * three, chosen from every skill in the game. Simpler than the passive picker:
+ * no presets, and no good/bad ranking, since active skills are not graded that
+ * way.
+ */
+function SkillChooser({
+  chosen,
+  onChange,
+  say,
+}: {
+  chosen: main.SkillInfo[];
+  onChange: (next: main.SkillInfo[]) => void;
+  say: (m: string, bad?: boolean) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<main.SkillInfo[]>([]);
+  const MAX = 3;
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    let live = true;
+    SearchSkills(query)
+      .then((r) => live && setResults(r.slice(0, 40)))
+      .catch((e) => live && say(String(e), true));
+    return () => {
+      live = false;
+    };
+  }, [query, say]);
+
+  function add(s: main.SkillInfo) {
+    if (chosen.some((c) => c.id === s.id)) return;
+    if (chosen.length >= MAX) {
+      say(`액티브 스킬은 최대 ${MAX}개까지입니다`, true);
+      return;
+    }
+    onChange([...chosen, s]);
+    setQuery("");
+  }
+
+  const label = (s: main.SkillInfo) =>
+    s.power > 0 ? `${s.name} · ${s.element} ${s.power}` : `${s.name} · ${s.element}`;
+
+  return (
+    <>
+      <div className="chips">
+        {chosen.length === 0 && <span className="muted">없음</span>}
+        {chosen.map((s) => (
+          <button
+            key={s.id}
+            className={`chip elem-${(s.element || "none").toLowerCase()}`}
+            title={s.known ? label(s) : "알 수 없는 스킬"}
+            onClick={() => onChange(chosen.filter((c) => c.id !== s.id))}
+          >
+            {s.name} <span className="x">×</span>
+          </button>
+        ))}
+      </div>
+
+      <input
+        type="text"
+        placeholder="스킬 검색 (한글/영문)"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+
+      {results.length > 0 && (
+        <div className="results">
+          {results.map((s) => (
+            <button
+              key={s.id}
+              className="result"
+              title={label(s)}
+              onClick={() => add(s)}
+            >
+              <span className={`chip elem-${(s.element || "none").toLowerCase()}`}>
+                {s.name}
+              </span>
+              <span className="desc">
+                {s.element}
+                {s.type ? ` · ${s.type}` : ""}
+                {s.power > 0 ? ` · 위력 ${s.power}` : ""}
+                {s.unique ? " · 고유기" : ""}
+              </span>
             </button>
           ))}
         </div>

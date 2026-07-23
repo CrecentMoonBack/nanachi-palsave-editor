@@ -88,6 +88,32 @@ export namespace main {
 	        this.hasAny = source["hasAny"];
 	    }
 	}
+	export class SkillInfo {
+	    id: string;
+	    name: string;
+	    nameEn: string;
+	    element: string;
+	    type: string;
+	    power: number;
+	    unique: boolean;
+	    known: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SkillInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.nameEn = source["nameEn"];
+	        this.element = source["element"];
+	        this.type = source["type"];
+	        this.power = source["power"];
+	        this.unique = source["unique"];
+	        this.known = source["known"];
+	    }
+	}
 	export class PassiveInfo {
 	    id: string;
 	    name: string;
@@ -133,6 +159,7 @@ export namespace main {
 	    location: string;
 	    camp: number;
 	    passives: PassiveInfo[];
+	    skills: SkillInfo[];
 	    work: WorkInfo[];
 	
 	    static createFrom(source: any = {}) {
@@ -163,6 +190,7 @@ export namespace main {
 	        this.location = source["location"];
 	        this.camp = source["camp"];
 	        this.passives = this.convertValues(source["passives"], PassiveInfo);
+	        this.skills = this.convertValues(source["skills"], SkillInfo);
 	        this.work = this.convertValues(source["work"], WorkInfo);
 	    }
 	
@@ -361,6 +389,7 @@ export namespace main {
 	        this.playerSaves = source["playerSaves"];
 	    }
 	}
+	
 	export class SpeciesSummary {
 	    speciesId: string;
 	    name: string;

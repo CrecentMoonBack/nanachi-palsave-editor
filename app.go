@@ -311,6 +311,9 @@ type PalInfo struct {
 
 	Passives []PassiveInfo `json:"passives"`
 
+	// Skills is the pal's equipped active skills, at most MaxEquipWaza.
+	Skills []SkillInfo `json:"skills"`
+
 	// Work is every job in the game's order, with what a book has added and
 	// what the species starts with.
 	Work []WorkInfo `json:"work"`
@@ -403,6 +406,36 @@ type PassiveInfo struct {
 	Known bool `json:"known"`
 }
 
+// SkillInfo is one active (waza) skill for display.
+type SkillInfo struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	NameEN  string `json:"nameEn"`
+	Element string `json:"element"`
+	Type    string `json:"type"`
+	Power   int    `json:"power"`
+	Unique  bool   `json:"unique"`
+	Known   bool   `json:"known"`
+}
+
+// describeSkill renders one active-skill id for display, falling back to the
+// raw id when the table has no entry — the same stance as passives.
+func describeSkill(id string) SkillInfo {
+	s, ok := paldata.LookupSkill(id)
+	if !ok {
+		return SkillInfo{ID: id, Name: id}
+	}
+	name := s.NameKO
+	if name == "" {
+		name = id
+	}
+	return SkillInfo{
+		ID: id, Name: name, NameEN: s.NameEN,
+		Element: s.Element, Type: s.Type, Power: s.Power,
+		Unique: s.Unique, Known: true,
+	}
+}
+
 // describePassive renders one id for display, falling back to the raw id.
 func describePassive(id string) PassiveInfo {
 	p, ok := paldata.LookupPassive(id)
@@ -490,6 +523,10 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 	info.Passives = make([]PassiveInfo, 0, len(p.Passives()))
 	for _, id := range p.Passives() {
 		info.Passives = append(info.Passives, describePassive(id))
+	}
+	info.Skills = make([]SkillInfo, 0, len(p.EquipWaza()))
+	for _, id := range p.EquipWaza() {
+		info.Skills = append(info.Skills, describeSkill(id))
 	}
 	info.Work = describeWork(species, p.WorkSuitabilityBonuses())
 	if ko, ok := paldata.PalName(species); ok {
@@ -1097,6 +1134,35 @@ func (a *App) SearchPassives(q string) []PassiveInfo {
 	out := make([]PassiveInfo, 0, len(found))
 	for _, p := range found {
 		out = append(out, describePassive(p.ID))
+	}
+	return out
+}
+
+// SetPalSkills replaces a pal's equipped active skills.
+//
+// Unknown ids are refused, as with passives: the game drops a skill it does
+// not recognise, so a typo would silently cost the pal a slot. At most
+// MaxEquipWaza skills; palsave also adds each to MasteredWaza so the game
+// keeps it.
+func (a *App) SetPalSkills(instanceID string, ids []string) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, ok := paldata.LookupSkill(id); !ok {
+			return fmt.Errorf("모르는 액티브 스킬입니다: %s", id)
+		}
+	}
+	return p.SetEquipWaza(ids)
+}
+
+// SearchSkills finds active skills by id or name, for the picker.
+func (a *App) SearchSkills(q string) []SkillInfo {
+	found := paldata.SearchSkills(q)
+	out := make([]SkillInfo, 0, len(found))
+	for _, s := range found {
+		out = append(out, describeSkill(s.ID))
 	}
 	return out
 }
