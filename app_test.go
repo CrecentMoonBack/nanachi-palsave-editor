@@ -854,3 +854,76 @@ func TestAddAlphaPalSurvivesSaveAndReopen(t *testing.T) {
 	}
 	t.Fatal("the alpha is not in the reopened save")
 }
+
+// Active skill editing must show up in Pals, apply, and survive a reopen.
+func TestSetPalSkillsRoundTripsThroughApp(t *testing.T) {
+	if err := oodle.Available(); err != nil {
+		t.Skipf("codec unavailable: %v", err)
+	}
+	level := copyFixture(t)
+
+	a := NewApp()
+	if _, err := a.OpenSave(level); err != nil {
+		t.Fatal(err)
+	}
+	players, _ := a.Players()
+
+	// Find a pal that has equipped skills, via the API the UI uses.
+	var uid, inst string
+	for _, p := range players {
+		pals, err := a.Pals(p.UID)
+		if err != nil {
+			continue
+		}
+		for _, x := range pals {
+			if x.Skills == nil {
+				t.Fatalf("%s: Skills is nil (marshals to null, crashes UI)", x.SpeciesID)
+			}
+			if len(x.Skills) > 0 && uid == "" {
+				uid, inst = p.UID, x.InstanceID
+			}
+		}
+	}
+	if inst == "" {
+		t.Skip("no pal with equipped skills")
+	}
+
+	want := []string{"AcidRain", "PowerBall", "IceMissile"}
+	if err := a.SetPalSkills(inst, want); err != nil {
+		t.Fatalf("SetPalSkills: %v", err)
+	}
+	if err := a.SetPalSkills(inst, []string{"NopeNotASkill"}); err == nil {
+		t.Error("unknown skill should be refused")
+	}
+	if _, err := a.SaveToDisk(); err != nil {
+		t.Fatal(err)
+	}
+
+	b := NewApp()
+	if _, err := b.OpenSave(level); err != nil {
+		t.Fatal(err)
+	}
+	pals, _ := b.Pals(uid)
+	for _, x := range pals {
+		if x.InstanceID != inst {
+			continue
+		}
+		got := make([]string, len(x.Skills))
+		for i, s := range x.Skills {
+			got[i] = s.ID
+			if s.Name == "" {
+				t.Errorf("skill %s has no display name", s.ID)
+			}
+		}
+		if len(got) != 3 {
+			t.Fatalf("after reopen %d skills, want 3: %v", len(got), got)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("skill %d is %q, want %q", i, got[i], want[i])
+			}
+		}
+		return
+	}
+	t.Fatal("edited pal not found after reopen")
+}

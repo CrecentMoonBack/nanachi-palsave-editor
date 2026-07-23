@@ -631,3 +631,105 @@ func (p *Pal) SetAlpha(alpha bool) error {
 
 // alphaIDPrefix is what marks an alpha in CharacterID.
 const alphaIDPrefix = "BOSS_"
+
+// wazaPrefix is what the save puts before an active skill's bare name.
+const wazaPrefix = "EPalWazaID::"
+
+// MaxEquipWaza is how many active skills a pal may have equipped at once.
+const MaxEquipWaza = 3
+
+// EquipWaza returns the pal's equipped active skills as bare names
+// ("AcidRain"), the game's own "EPalWazaID::" prefix removed.
+func (p *Pal) EquipWaza() []string {
+	return p.wazaList("EquipWaza")
+}
+
+// MasteredWaza returns every active skill the pal has learned, bare names.
+func (p *Pal) MasteredWaza() []string {
+	return p.wazaList("MasteredWaza")
+}
+
+func (p *Pal) wazaList(field string) []string {
+	v, ok := p.params.Get(field)
+	if !ok {
+		return nil
+	}
+	a, ok := v.(*gvas.ArrayProperty)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(a.Values.Strings))
+	for _, s := range a.Values.Strings {
+		out = append(out, strings.TrimPrefix(s.Value, wazaPrefix))
+	}
+	return out
+}
+
+// SetEquipWaza replaces the equipped active skills.
+//
+// At most MaxEquipWaza are accepted, the game's own limit. Each id may be given
+// bare or qualified; it is stored in the save's "EPalWazaID::" form. A skill is
+// also added to MasteredWaza when absent, because the game equips only from
+// what a pal has learned — equipping a move it never mastered would leave a
+// slot the game discards on load.
+func (p *Pal) SetEquipWaza(ids []string) error {
+	if len(ids) > MaxEquipWaza {
+		return fmt.Errorf("palsave: %d active skills, at most %d", len(ids), MaxEquipWaza)
+	}
+	qualified := make([]gvas.String, 0, len(ids))
+	for _, id := range ids {
+		q := id
+		if !strings.HasPrefix(q, wazaPrefix) {
+			q = wazaPrefix + q
+		}
+		qualified = append(qualified, gvas.Str(q))
+	}
+	p.setWazaArray("EquipWaza", qualified)
+
+	// Make sure each equipped skill is mastered, so the game accepts it.
+	mastered := map[string]bool{}
+	for _, m := range p.MasteredWaza() {
+		mastered[m] = true
+	}
+	add := make([]gvas.String, 0)
+	for _, id := range ids {
+		bare := strings.TrimPrefix(id, wazaPrefix)
+		if !mastered[bare] {
+			add = append(add, gvas.Str(wazaPrefix+bare))
+			mastered[bare] = true
+		}
+	}
+	if len(add) > 0 {
+		cur := p.wazaStrings("MasteredWaza")
+		p.setWazaArray("MasteredWaza", append(cur, add...))
+	}
+	return nil
+}
+
+// wazaStrings returns the raw qualified strings of a waza array.
+func (p *Pal) wazaStrings(field string) []gvas.String {
+	v, ok := p.params.Get(field)
+	if !ok {
+		return nil
+	}
+	a, ok := v.(*gvas.ArrayProperty)
+	if !ok {
+		return nil
+	}
+	return append([]gvas.String(nil), a.Values.Strings...)
+}
+
+// setWazaArray writes an EnumProperty array, creating it when absent.
+func (p *Pal) setWazaArray(field string, vals []gvas.String) {
+	v, ok := p.params.Get(field)
+	if !ok {
+		p.params.Set(field, &gvas.ArrayProperty{
+			ArrayType: gvas.Str("EnumProperty"),
+			Values:    gvas.ArrayValues{Strings: vals},
+		})
+		return
+	}
+	if a, ok := v.(*gvas.ArrayProperty); ok {
+		a.Values.Strings = vals
+	}
+}

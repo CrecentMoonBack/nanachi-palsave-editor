@@ -20,6 +20,27 @@ func Pals() []*Pal {
 	return palList
 }
 
+// SearchSkills returns the active skills whose id, Korean or English name
+// contains q. An empty query returns everything, sorted by Korean name so the
+// picker reads naturally.
+func SearchSkills(q string) []*Skill {
+	load()
+	q = strings.ToLower(strings.TrimSpace(q))
+	out := make([]*Skill, 0, len(skillList))
+	for _, s := range skillList {
+		if q == "" || matches(q, s.ID, s.NameKO, s.NameEN) {
+			out = append(out, s)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Unique != out[j].Unique {
+			return !out[i].Unique // ordinary skills before signature moves
+		}
+		return out[i].NameKO < out[j].NameKO
+	})
+	return out
+}
+
 // ItemsOfType returns every item whose type_b matches, in sort order. Used to
 // find a same-category donor when creating a per-instance item the save has
 // never held — a weapon's state record has the shape of its category, not its

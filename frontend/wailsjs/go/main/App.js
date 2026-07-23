@@ -94,6 +94,10 @@ export function SearchPassives(arg1) {
   return window['go']['main']['App']['SearchPassives'](arg1);
 }
 
+export function SearchSkills(arg1) {
+  return window['go']['main']['App']['SearchSkills'](arg1);
+}
+
 export function SetContainerItemCount(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetContainerItemCount'](arg1, arg2, arg3);
 }
@@ -128,6 +132,10 @@ export function SetPalRank(arg1, arg2) {
 
 export function SetPalRankBonus(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetPalRankBonus'](arg1, arg2, arg3);
+}
+
+export function SetPalSkills(arg1, arg2) {
+  return window['go']['main']['App']['SetPalSkills'](arg1, arg2);
 }
 
 export function SetPalTalent(arg1, arg2, arg3) {

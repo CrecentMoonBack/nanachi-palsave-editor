@@ -1250,3 +1250,19 @@ button.tiny {
 .check input {
   margin: 0;
 }
+
+/* Active-skill chips coloured by element, so a pal's moveset reads at a glance.
+   Muted fills that work in both themes; text stays --text for contrast. */
+.chip[class*="elem-"] {
+  border: 1px solid var(--line);
+}
+.chip.elem-fire { background: #b5432a; color: #fff; border-color: #b5432a; }
+.chip.elem-water { background: #2f6fb0; color: #fff; border-color: #2f6fb0; }
+.chip.elem-leaf { background: #3f8f4a; color: #fff; border-color: #3f8f4a; }
+.chip.elem-electricity { background: #c99a12; color: #1a1400; border-color: #c99a12; }
+.chip.elem-ice { background: #4a9fb8; color: #fff; border-color: #4a9fb8; }
+.chip.elem-earth { background: #94662f; color: #fff; border-color: #94662f; }
+.chip.elem-dark { background: #5a4a78; color: #fff; border-color: #5a4a78; }
+.chip.elem-dragon { background: #7d4bb0; color: #fff; border-color: #7d4bb0; }
+.chip.elem-normal { background: var(--panel-2); color: var(--text); }
+.chip.elem-none { background: var(--panel-2); color: var(--muted); }
