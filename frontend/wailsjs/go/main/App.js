@@ -106,6 +106,10 @@ export function SetPalAlpha(arg1, arg2) {
   return window['go']['main']['App']['SetPalAlpha'](arg1, arg2);
 }
 
+export function SetPalFriendship(arg1, arg2) {
+  return window['go']['main']['App']['SetPalFriendship'](arg1, arg2);
+}
+
 export function SetPalGender(arg1, arg2) {
   return window['go']['main']['App']['SetPalGender'](arg1, arg2);
 }

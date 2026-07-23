@@ -281,7 +281,7 @@ type PalInfo struct {
 	// Gender is "Male", "Female", or "" when the save records none — eleven
 	// pals in the live save have no Gender at all.
 	Gender string `json:"gender"`
-	Icon       string `json:"icon"`
+	Icon   string `json:"icon"`
 
 	Level int   `json:"level"`
 	Exp   int64 `json:"exp"`
@@ -298,6 +298,10 @@ type PalInfo struct {
 	SoulDefence    int `json:"soulDefence"`
 	SoulCraftSpeed int `json:"soulCraftSpeed"`
 	SoulHP         int `json:"soulHp"`
+
+	// Friendship is accumulated friendship points. The game shows this as a
+	// heart gauge; the raw number is what the save stores.
+	Friendship int `json:"friendship"`
 
 	// Location is where the pal is kept: "box", "party", "base" or "" when the
 	// save records no slot at all.
@@ -469,6 +473,8 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 		SoulDefence:    p.RankBonus(palsave.RankDefence),
 		SoulCraftSpeed: p.RankBonus(palsave.RankCraftSpeed),
 		SoulHP:         p.RankBonus(palsave.RankHP),
+
+		Friendship: p.Friendship(),
 
 		Name: species,
 	}
@@ -896,6 +902,15 @@ func (a *App) SetPalRankBonus(instanceID, name string, value int) error {
 		return fmt.Errorf("알 수 없는 강화 항목입니다: %s", name)
 	}
 	return p.SetRankBonus(name, value)
+}
+
+// SetPalFriendship sets a pal's friendship points.
+func (a *App) SetPalFriendship(instanceID string, value int) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	return p.SetFriendship(value)
 }
 
 // The property names the UI may write. Both setters take a name straight from
@@ -1406,7 +1421,7 @@ func (a *App) GiveItem(uid, itemID string, count int) (int32, error) {
 	if err != nil {
 		return 0, err
 	}
-	return a.world.GiveItem(cid, itemID, int32(count))
+	return a.giveItem(cid, itemID, count)
 }
 
 // SetContainerItemCount sets a stack in any container, addressed by id. This
@@ -1441,7 +1456,76 @@ func (a *App) GiveContainerItem(containerID, itemID string, count int) (int32, e
 	if err != nil {
 		return 0, err
 	}
-	return a.world.GiveItem(cid, itemID, int32(count))
+	return a.giveItem(cid, itemID, count)
+}
+
+// giveItem routes to the right giver by whether the item stacks. A
+// non-stackable item — a weapon, tool, shield, armour — is a per-instance
+// object with durability, ammo and shield state that lives in a separate
+// record, so it goes through GiveInstancedItem, one item per slot. Giving it
+// as a plain stack is what left a user's weapons unable to reload.
+func (a *App) giveItem(cid gvas.GUID, itemID string, count int) (int32, error) {
+	if isInstancedItem(itemID) {
+		donor, err := a.dynamicDonor(itemID)
+		if err != nil {
+			return 0, err
+		}
+		var last int32
+		for i := 0; i < count; i++ {
+			idx, err := a.world.GiveInstancedItem(cid, itemID, donor)
+			if err != nil {
+				return last, err
+			}
+			last = idx
+		}
+		return last, nil
+	}
+	// Stackable: pass the item's stack cap so a large count spreads across
+	// slots instead of overflowing one past its limit.
+	max := int32(0)
+	if it, ok := paldata.LookupItem(itemID); ok {
+		max = int32(it.MaxStackCount)
+	}
+	return a.world.GiveStackableItem(cid, itemID, int32(count), max)
+}
+
+// isInstancedItem reports whether an item needs a per-instance state record.
+// The game gives every non-stackable item one; max_stack_count of 1 is the
+// tell. An item the table does not know is treated as stackable, the safe
+// default — it just gets no state record, which is exactly today's behaviour.
+func isInstancedItem(itemID string) bool {
+	it, ok := paldata.LookupItem(itemID)
+	if !ok {
+		return false
+	}
+	return it.MaxStackCount == 1
+}
+
+// dynamicDonor picks an item already in the save whose per-instance record can
+// be the template for itemID's. The record's tail depends on the item category
+// (type_b), not the item, so any item of the same category serves — a grade-1
+// assault rifle donates for a grade-5 plasma rifle. The exact item is used when
+// the save happens to have it.
+//
+// An error naming the category, rather than a silent failure, is what tells the
+// user why a weapon nobody in the save has ever held cannot be added: nothing
+// of its kind exists to model it on.
+func (a *App) dynamicDonor(itemID string) (string, error) {
+	if a.world.HasDynamicItem(itemID) {
+		return itemID, nil
+	}
+	it, ok := paldata.LookupItem(itemID)
+	if !ok {
+		return "", fmt.Errorf("모르는 아이템입니다: %s", itemID)
+	}
+	// Any other item of the same category that the save already holds.
+	for _, cand := range paldata.ItemsOfType(it.TypeB) {
+		if cand.ID != itemID && a.world.HasDynamicItem(cand.ID) {
+			return cand.ID, nil
+		}
+	}
+	return "", fmt.Errorf("이 세이브에 %s 계열 아이템이 하나도 없어 %s 를 만들 수 없습니다. "+
+		"같은 계열 아이템을 게임에서 하나 얻은 뒤 다시 시도하세요", it.TypeB, itemID)
 }
 
 // namedContainer resolves a container id string, refusing one the save does
@@ -1496,12 +1580,34 @@ func (a *App) SearchItems(q string) []ItemChoice {
 		if ko, ok := paldata.ItemName(it.ID); ok {
 			c.Name = ko
 		}
+		// Weapons and armour come in grades that share one name: a search for
+		// "플라즈마 소총" returns five identical-looking rows. The grade is the
+		// trailing _2.._5 on the id (bare id is grade 1), so surface it or the
+		// list is unusable. The id is shown too, since two grades are otherwise
+		// indistinguishable in a dropdown.
+		if g := itemGrade(it.ID); g > 1 {
+			c.Name = fmt.Sprintf("%s (등급 %d · %s)", c.Name, g, it.ID)
+		}
 		if icon, ok := paldata.ItemIcon(it.ID); ok && icons.Has(icon) {
 			c.Icon = icon
 		}
 		out = append(out, c)
 	}
 	return out
+}
+
+// itemGrade reads a weapon/armour grade off the id's trailing _2.._5, where a
+// bare id (or _Default) is grade 1. Anything else returns 0, meaning "not a
+// graded item" — most items have no grade and should show no suffix.
+func itemGrade(id string) int {
+	if len(id) < 2 || id[len(id)-2] != '_' {
+		return 0
+	}
+	switch id[len(id)-1] {
+	case '2', '3', '4', '5':
+		return int(id[len(id)-1] - '0')
+	}
+	return 0
 }
 
 // --- saving ---------------------------------------------------------------

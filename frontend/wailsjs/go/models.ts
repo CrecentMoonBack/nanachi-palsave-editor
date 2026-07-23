@@ -129,6 +129,7 @@ export namespace main {
 	    soulDefence: number;
 	    soulCraftSpeed: number;
 	    soulHp: number;
+	    friendship: number;
 	    location: string;
 	    camp: number;
 	    passives: PassiveInfo[];
@@ -158,6 +159,7 @@ export namespace main {
 	        this.soulDefence = source["soulDefence"];
 	        this.soulCraftSpeed = source["soulCraftSpeed"];
 	        this.soulHp = source["soulHp"];
+	        this.friendship = source["friendship"];
 	        this.location = source["location"];
 	        this.camp = source["camp"];
 	        this.passives = this.convertValues(source["passives"], PassiveInfo);
