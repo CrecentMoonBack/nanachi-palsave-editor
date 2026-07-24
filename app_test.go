@@ -927,3 +927,69 @@ func TestSetPalSkillsRoundTripsThroughApp(t *testing.T) {
 	}
 	t.Fatal("edited pal not found after reopen")
 }
+
+// TestSetPlayerLevelKeepsExpOnThePlayerCurve is the bug a user reported:
+// lowering a player's level, then earning a scrap of experience, snapped them
+// straight back to the old level.
+//
+// The cause was writing the *pal* experience figure onto a player. The game
+// re-derives level from experience, so the check that matters is not "did the
+// level field change" but "does the stored experience still mean that level".
+func TestSetPlayerLevelKeepsExpOnThePlayerCurve(t *testing.T) {
+	if _, err := os.Stat(fixture); err != nil {
+		t.Skip("no save fixture; see scripts/setup.sh --all")
+	}
+	a := NewApp()
+	if _, err := a.OpenSave(fixture); err != nil {
+		t.Fatal(err)
+	}
+	players, err := a.Players()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(players) == 0 {
+		t.Skip("no players")
+	}
+	uid := players[0].UID
+
+	for _, want := range []int{1, 5, 23, 34, 50, 76, 80} {
+		if err := a.SetPlayerLevel(uid, want); err != nil {
+			t.Fatalf("SetPlayerLevel(%d): %v", want, err)
+		}
+		c, err := a.findPlayer(uid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := c.Pal.Level(); got != want {
+			t.Errorf("level field is %d, want %d", got, want)
+		}
+		// The real assertion: the game would compute this same level from the
+		// experience we wrote. With the pal curve this failed badly — level 70
+		// used to store 68,963,797, which on the player curve is past level 80.
+		exp := c.Pal.Exp()
+		if got := palsave.LevelForTotalPlayerExp(exp); got != want {
+			t.Errorf("level %d stored exp %d, which the player curve reads as level %d",
+				want, exp, got)
+		}
+	}
+}
+
+// Levels beyond the game's cap are refused rather than written.
+func TestSetPlayerLevelRejectsOutOfRange(t *testing.T) {
+	if _, err := os.Stat(fixture); err != nil {
+		t.Skip("no save fixture")
+	}
+	a := NewApp()
+	if _, err := a.OpenSave(fixture); err != nil {
+		t.Fatal(err)
+	}
+	players, _ := a.Players()
+	if len(players) == 0 {
+		t.Skip("no players")
+	}
+	for _, bad := range []int{0, -1, 81, 101, 999} {
+		if err := a.SetPlayerLevel(players[0].UID, bad); err == nil {
+			t.Errorf("level %d should have been refused", bad)
+		}
+	}
+}
