@@ -1297,15 +1297,22 @@ func (a *App) findPlayer(uid string) (*palsave.CharEntry, error) {
 
 // SetPlayerLevel sets a player's level, keeping experience consistent.
 //
-// Players use the same level curve as pals — the save stores Level and Exp
-// identically on both — so this reuses the pal setter.
+// A player is stored like a pal — same Level and Exp fields — but is *not* on
+// the pal experience curve, which this used to assume. The curves diverge
+// sharply: level 80 costs a pal 144,829,235 and a player 45,859,908. Writing
+// the pal figure onto a player therefore left them far above their own
+// threshold, and since the game re-derives level from experience as soon as
+// any is earned, a lowered level jumped back the instant the player picked
+// anything up. A user hit exactly that after eating one egg.
 func (a *App) SetPlayerLevel(uid string, level int) error {
 	c, err := a.findPlayer(uid)
 	if err != nil {
 		return err
 	}
-	exp, ok := palsave.TotalPalExpForLevel(level)
-	if !ok {
+	// The curve is defined to 100 but SetLevel accepts only up to the game's
+	// cap, so the bound quoted here is the one actually enforced.
+	exp, ok := palsave.TotalPlayerExpForLevel(level)
+	if !ok || level > palsave.MaxPalLevel {
 		return fmt.Errorf("레벨 %d 는 범위를 벗어납니다 (1-%d)", level, palsave.MaxPalLevel)
 	}
 	return c.Pal.SetLevelWithExp(level, exp)
