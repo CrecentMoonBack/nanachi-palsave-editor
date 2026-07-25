@@ -390,3 +390,37 @@ func TestSetAlphaIsJustThePrefix(t *testing.T) {
 		t.Errorf("no-op SetAlpha: %v", err)
 	}
 }
+
+func TestSetAwakenedTogglesTheFlagAndRemovesItWhenOff(t *testing.T) {
+	w := loadLevelWorld(t)
+	var p *Pal
+	for _, c := range w.Chars() {
+		if !c.Pal.IsPlayer() && c.Pal.CharacterID() != "" {
+			p = c.Pal
+			break
+		}
+	}
+	if p == nil {
+		t.Skip("no pal in the fixture")
+	}
+
+	if err := p.SetAwakened(true); err != nil {
+		t.Fatal(err)
+	}
+	if !p.IsAwakened() {
+		t.Error("IsAwakened() is false after SetAwakened(true)")
+	}
+
+	// Off must remove the field, not write false: the game omits it on an
+	// un-awakened pal, so a lingering bIsAwakening=false would not match a
+	// record the game produces.
+	if err := p.SetAwakened(false); err != nil {
+		t.Fatal(err)
+	}
+	if p.IsAwakened() {
+		t.Error("still awakened after SetAwakened(false)")
+	}
+	if p.params.Has(awakeningField) {
+		t.Error("bIsAwakening left in the record after SetAwakened(false); it should be removed")
+	}
+}

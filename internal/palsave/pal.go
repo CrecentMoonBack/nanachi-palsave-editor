@@ -632,6 +632,34 @@ func (p *Pal) SetAlpha(alpha bool) error {
 // alphaIDPrefix is what marks an alpha in CharacterID.
 const alphaIDPrefix = "BOSS_"
 
+// awakeningField is the boolean an Awakening Crystal (각성 결정) sets. The game
+// reads it to grant the stat boost and the gold level marker, the same way the
+// BOSS_ prefix marks an alpha — no separate stored bonus.
+const awakeningField = "bIsAwakening"
+
+// IsAwakened reports whether this pal has been awakened.
+func (p *Pal) IsAwakened() bool {
+	v, ok := p.params.Get(awakeningField)
+	if !ok {
+		return false
+	}
+	b, ok := v.(*gvas.BoolProperty)
+	return ok && b.Value
+}
+
+// SetAwakened turns awakening on or off. Off removes the field rather than
+// writing false: the game omits it entirely on an un-awakened pal — one of some
+// 1,800 in a live save carried it — so removing it keeps the record identical to
+// what the game itself would write.
+func (p *Pal) SetAwakened(on bool) error {
+	if !on {
+		p.params.Delete(awakeningField)
+		return nil
+	}
+	p.params.Set(awakeningField, &gvas.BoolProperty{Value: true})
+	return nil
+}
+
 // wazaPrefix is what the save puts before an active skill's bare name.
 const wazaPrefix = "EPalWazaID::"
 
