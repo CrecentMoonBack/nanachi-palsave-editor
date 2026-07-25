@@ -57,6 +57,8 @@ export function SetItemCount(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function SetPalAlpha(arg1:string,arg2:boolean):Promise<void>;
 
+export function SetPalAwakening(arg1:string,arg2:boolean):Promise<void>;
+
 export function SetPalFriendship(arg1:string,arg2:number):Promise<void>;
 
 export function SetPalGender(arg1:string,arg2:string):Promise<void>;

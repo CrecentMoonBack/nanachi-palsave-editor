@@ -48,6 +48,7 @@ import {
   SetPalWorkSuitability,
   SetPalGender,
   SetPalAlpha,
+  SetPalAwakening,
   Status,
 } from "../wailsjs/go/main/App";
 import { main } from "../wailsjs/go/models";
@@ -996,6 +997,7 @@ function PalEditor({
   const [skills, setSkills] = useState<main.SkillInfo[]>(pal.skills ?? []);
   const [gender, setGender] = useState(pal.gender);
   const [alpha, setAlpha] = useState(pal.isBoss);
+  const [awakened, setAwakened] = useState(pal.awakened);
   // Keyed by bare job id, holding only what a book added — the species base is
   // display context and is never written.
   const [work, setWork] = useState<Record<string, number>>(() =>
@@ -1042,6 +1044,8 @@ function PalEditor({
           // reason to touch every selected pal's species to set it to what it
           // already is.
           if (alpha !== t.isBoss) await SetPalAlpha(t.instanceId, alpha);
+          if (awakened !== t.awakened)
+            await SetPalAwakening(t.instanceId, awakened);
         }
         if (on.level) await SetPalLevel(t.instanceId, level);
         if (on.rank) await SetPalRank(t.instanceId, rank);
@@ -1124,6 +1128,7 @@ function PalEditor({
                 (species.length > 3 ? ` 외 ${species.length - 3}종` : "")
               : pal.name}
             {!many && pal.isBoss && <span className="badge">알파</span>}
+            {!many && pal.awakened && <span className="badge">각성</span>}
           </div>
         </div>
         <button className="ghost" onClick={maxAll} disabled={busy}>
@@ -1198,11 +1203,12 @@ function PalEditor({
       <div className={`field-group ${many && !on.traits ? "off" : ""}`}>
         <div className="group-title">
           <Gate k="traits" />
-          성별 · 알파
+          성별 · 알파 · 각성
         </div>
         <div className="hint">
           알파는 종족 이름 앞에 붙는 표시일 뿐이라, 켜면 그 자리에서 알파가
-          됩니다. 몸집이 커지고 체력이 올라갑니다.
+          됩니다. 몸집이 커지고 체력이 올라갑니다. 각성은 각성 결정을 준 것과
+          같은 상태로, 레벨이 금색이 되고 능력치가 오릅니다.
         </div>
         <div className="field-row">
           <select
@@ -1226,6 +1232,17 @@ function PalEditor({
               }}
             />{" "}
             알파
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={awakened}
+              onChange={(e) => {
+                setAwakened(e.target.checked);
+                enable("traits");
+              }}
+            />{" "}
+            각성
           </label>
         </div>
       </div>

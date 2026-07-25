@@ -283,6 +283,10 @@ type PalInfo struct {
 	Gender string `json:"gender"`
 	Icon   string `json:"icon"`
 
+	// Awakened is true when the pal has been awakened with an Awakening Crystal
+	// (각성 결정) — the gold level marker in-game.
+	Awakened bool `json:"awakened"`
+
 	Level int   `json:"level"`
 	Exp   int64 `json:"exp"`
 	Rank  int   `json:"rank"`
@@ -493,6 +497,7 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 		SpeciesID:     species,
 		Nickname:      p.Nickname(),
 		IsBoss:        p.IsBoss(),
+		Awakened:      p.IsAwakened(),
 		Gender:        p.Gender(),
 		Level:         p.Level(),
 		Exp:           p.Exp(),
@@ -739,6 +744,17 @@ func (a *App) SetPalAlpha(instanceID string, alpha bool) error {
 		return err
 	}
 	return p.SetAlpha(alpha)
+}
+
+// SetPalAwakening awakens a pal or reverses it, as an Awakening Crystal (각성
+// 결정) does — a single boolean the game reads for the stat boost and the gold
+// level marker.
+func (a *App) SetPalAwakening(instanceID string, on bool) error {
+	p, err := a.findPal(instanceID)
+	if err != nil {
+		return err
+	}
+	return p.SetAwakened(on)
 }
 
 // SearchPals finds species by id or Korean name.
