@@ -743,31 +743,44 @@ func (a *App) SetPalAlpha(instanceID string, alpha bool) error {
 
 // SearchPals finds species by id or Korean name.
 //
-// Only real pals: the table also holds human NPCs and quest actors, and
-// putting a shopkeeper in someone's palbox is not what "add a pal" means.
+// Real pals rank first, in Paldeck order (tower and raid bosses after them),
+// then the human NPCs — wandering and legendary merchants, villagers, bounty
+// actors. Browsing still opens on pals, but a search like "상인" now surfaces
+// the merchants, which the game will let you keep in a palbox.
+//
+// ponytail: every NPC is included rather than only the merchants — no name
+// heuristic to maintain, and pals fill the browse view first regardless.
 func (a *App) SearchPals(q string) []PalChoice {
 	found := paldata.SearchPals(q)
 
-	// Ordinary pals first, in the game's own Paldeck order, with the tower and
-	// raid bosses after them. Unsorted, the list opens on a wall of tower boss
-	// duos — several of which share a Korean name — which is not what anyone
-	// means by "add a pal".
-	ranked := make([]*paldata.Pal, 0, len(found))
+	// Unsorted, the pal list opens on a wall of tower boss duos — several of
+	// which share a Korean name — which is not what anyone means by "add a pal".
+	pals := make([]*paldata.Pal, 0, len(found))
+	npcs := make([]*paldata.Pal, 0, len(found))
 	for _, p := range found {
 		if p.IsPal {
-			ranked = append(ranked, p)
+			pals = append(pals, p)
+		} else {
+			npcs = append(npcs, p)
 		}
 	}
-	sort.SliceStable(ranked, func(i, j int) bool {
-		bi, bj := palRank(ranked[i]), palRank(ranked[j])
+	sort.SliceStable(pals, func(i, j int) bool {
+		bi, bj := palRank(pals[i]), palRank(pals[j])
 		if bi != bj {
 			return bi < bj
 		}
-		if ranked[i].DeckIndex != ranked[j].DeckIndex {
-			return ranked[i].DeckIndex < ranked[j].DeckIndex
+		if pals[i].DeckIndex != pals[j].DeckIndex {
+			return pals[i].DeckIndex < pals[j].DeckIndex
 		}
-		return ranked[i].ID < ranked[j].ID
+		return pals[i].ID < pals[j].ID
 	})
+	sort.SliceStable(npcs, func(i, j int) bool {
+		if npcs[i].NameKO != npcs[j].NameKO {
+			return npcs[i].NameKO < npcs[j].NameKO
+		}
+		return npcs[i].ID < npcs[j].ID
+	})
+	ranked := append(pals, npcs...)
 
 	out := make([]PalChoice, 0, 50)
 	for _, p := range ranked {
