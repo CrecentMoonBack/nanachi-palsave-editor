@@ -673,6 +673,26 @@ func TestSearchPalsPutsOrdinaryPalsFirst(t *testing.T) {
 	}
 }
 
+// Merchants are human NPCs, not pals, so they used to be filtered out of the
+// picker entirely. They are addable now — a name search must surface them.
+func TestSearchPalsFindsMerchant(t *testing.T) {
+	a := NewApp()
+	got := a.SearchPals("방랑상인")
+	if len(got) == 0 {
+		t.Fatal("no results for 방랑상인")
+	}
+	var found bool
+	for _, c := range got {
+		if p, ok := paldata.LookupPal(c.ID); ok && !p.IsPal && c.Name == "방랑 상인" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("방랑상인 (a merchant NPC) not in results: %v", got)
+	}
+}
+
 // nullField finds a JSON field whose value is null.
 var nullField = regexp.MustCompile(`"(\w+)":null`)
 

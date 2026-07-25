@@ -118,8 +118,12 @@ func SearchPassives(q string) []*Passive {
 }
 
 func matches(lowerQuery string, fields ...string) bool {
+	// Spaces are ignored on both sides: the Korean names are inconsistently
+	// spaced ("방랑 상인"), and a user typing "방랑상인" should still find them.
+	// ponytail: ASCII space only — that is the whole of the inconsistency here.
+	q := strings.ReplaceAll(lowerQuery, " ", "")
 	for _, f := range fields {
-		if f != "" && strings.Contains(strings.ToLower(f), lowerQuery) {
+		if f != "" && strings.Contains(strings.ReplaceAll(strings.ToLower(f), " ", ""), q) {
 			return true
 		}
 	}
