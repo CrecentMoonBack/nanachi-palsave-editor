@@ -391,6 +391,79 @@ func TestSetAlphaIsJustThePrefix(t *testing.T) {
 	}
 }
 
+func TestDeletePalRemovesRecordAndSlot(t *testing.T) {
+	w := loadLevelWorld(t)
+	var inst gvas.GUID
+	for _, c := range w.Chars() {
+		if !c.Pal.IsPlayer() && c.InstanceID != (gvas.GUID{}) {
+			inst = c.InstanceID
+			break
+		}
+	}
+	if inst == (gvas.GUID{}) {
+		t.Skip("no pal in fixture")
+	}
+
+	before := len(w.Chars())
+	if err := w.DeletePal(inst); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(w.Chars()); got != before-1 {
+		t.Errorf("Chars count %d, want %d", got, before-1)
+	}
+	for _, c := range w.Chars() {
+		if c.InstanceID == inst {
+			t.Error("pal still in Chars() after delete")
+		}
+	}
+	for _, cont := range w.PalContainers() {
+		for _, s := range cont.Slots {
+			if s.Slot != nil && s.Slot.InstanceID == inst {
+				t.Error("slot still present after delete")
+			}
+		}
+	}
+	if err := w.DeletePal(inst); err == nil {
+		t.Error("deleting an already-deleted pal should fail")
+	}
+}
+
+func TestDeletePalRefusesPlayer(t *testing.T) {
+	w := loadLevelWorld(t)
+	var player gvas.GUID
+	for _, c := range w.Chars() {
+		if c.Pal.IsPlayer() {
+			player = c.InstanceID
+			break
+		}
+	}
+	if player == (gvas.GUID{}) {
+		t.Skip("no player in fixture")
+	}
+	if err := w.DeletePal(player); err == nil {
+		t.Error("DeletePal must refuse a player character")
+	}
+}
+
+// The embedded donor is what lets a pal be added to a save that holds none of
+// its own. It ships in a public binary, so it must decode and carry no owner id.
+func TestTemplateDonorDecodesAndCarriesNoOwner(t *testing.T) {
+	w := loadLevelWorld(t)
+	p, err := w.templateDonor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.CharacterID() == "" {
+		t.Error("template donor has no CharacterID")
+	}
+	if id, ok := p.OwnerPlayerUID(); ok && id != (gvas.GUID{}) {
+		t.Errorf("template donor carries a non-zero owner %v; it ships publicly", id)
+	}
+	if _, err := p.Raw.Encode(); err != nil {
+		t.Fatalf("template donor does not round-trip: %v", err)
+	}
+}
+
 func TestSetAwakenedTogglesTheFlagAndRemovesItWhenOff(t *testing.T) {
 	w := loadLevelWorld(t)
 	var p *Pal

@@ -186,9 +186,9 @@ func (w *World) AddPal(spec NewPalSpec) (gvas.GUID, error) {
 			spec.Container, container.Capacity)
 	}
 
-	donor, ok := w.donorPal()
-	if !ok {
-		return zero, fmt.Errorf("palsave: the save holds no pal to copy from")
+	donorRec, err := w.donorRecord()
+	if err != nil {
+		return zero, err
 	}
 
 	instance, err := newGUID()
@@ -198,7 +198,7 @@ func (w *World) AddPal(spec NewPalSpec) (gvas.GUID, error) {
 
 	// Deep copy: encoding and decoding produces a tree sharing nothing with
 	// the donor, which hand-copying the struct would not.
-	blob, err := donor.Pal.Raw.Encode()
+	blob, err := donorRec.Raw.Encode()
 	if err != nil {
 		return zero, fmt.Errorf("palsave: encoding the donor: %w", err)
 	}
@@ -380,20 +380,22 @@ func (c *PalContainer) appendSlot(index int32, owner, instance gvas.GUID) error 
 	if c.arr == nil || c.arr.Structs == nil {
 		return fmt.Errorf("palsave: container %s has no slot array", c.ID)
 	}
-	if len(c.arr.Structs.Values) == 0 {
-		return fmt.Errorf("palsave: container %s has no slot to copy version data from", c.ID)
-	}
 
 	slot := &CharacterContainerSlot{PlayerUID: owner, InstanceID: instance}
 	// The trailing bytes and permission id are copied from a populated slot:
 	// their meaning is not established, and an occupied slot is a working
-	// example of what the game accepts.
+	// example of what the game accepts. A brand-new box has no occupied slot,
+	// so fall back to the observed default — a zero permission and a zero
+	// trailer of the length every slot carries.
 	for _, s := range c.Slots {
 		if s.Slot != nil && s.Slot.InstanceID != (gvas.GUID{}) {
 			slot.PermissionTribeID = s.Slot.PermissionTribeID
 			slot.Unknown = append([]byte(nil), s.Slot.Unknown...)
 			break
 		}
+	}
+	if slot.Unknown == nil {
+		slot.Unknown = make([]byte, slotTrailerLen)
 	}
 
 	props := gvas.NewProperties()
@@ -403,16 +405,20 @@ func (c *PalContainer) appendSlot(index int32, owner, instance gvas.GUID) error 
 		ArrayType: gvas.Str("ByteProperty"),
 		Values:    gvas.ArrayValues{Bytes: slot.Encode()},
 	})
-	if src, ok := c.arr.Structs.Values[0].(*gvas.StructProperties); ok {
-		if cv, ok := src.Props.Get("CustomVersionData"); ok {
-			if ca, ok := cv.(*gvas.ArrayProperty); ok {
-				props.Set("CustomVersionData", &gvas.ArrayProperty{
-					ArrayType: ca.ArrayType,
-					Values:    gvas.ArrayValues{Bytes: append([]byte(nil), ca.Values.Bytes...)},
-				})
+	cvd := slotVersionData
+	if len(c.arr.Structs.Values) > 0 {
+		if src, ok := c.arr.Structs.Values[0].(*gvas.StructProperties); ok {
+			if cv, ok := src.Props.Get("CustomVersionData"); ok {
+				if ca, ok := cv.(*gvas.ArrayProperty); ok {
+					cvd = ca.Values.Bytes
+				}
 			}
 		}
 	}
+	props.Set("CustomVersionData", &gvas.ArrayProperty{
+		ArrayType: gvas.Str("ByteProperty"),
+		Values:    gvas.ArrayValues{Bytes: append([]byte(nil), cvd...)},
+	})
 
 	c.arr.Structs.Values = append(c.arr.Structs.Values, &gvas.StructProperties{Props: props})
 	c.Slots = append(c.Slots, &PalSlot{Index: index, Slot: slot, props: props})

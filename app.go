@@ -725,6 +725,19 @@ type PalChoice struct {
 	Icon string `json:"icon"`
 }
 
+// DeletePal removes a pal from the save entirely — record, container slot and
+// guild handle. Players cannot be deleted this way.
+func (a *App) DeletePal(instanceID string) error {
+	if a.world == nil {
+		return fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	id, err := gvas.ParseGUID(instanceID)
+	if err != nil {
+		return err
+	}
+	return a.world.DeletePal(id)
+}
+
 // SetPalGender sets a pal's gender.
 func (a *App) SetPalGender(instanceID, gender string) error {
 	p, err := a.findPal(instanceID)

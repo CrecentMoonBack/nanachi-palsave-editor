@@ -27,6 +27,7 @@ import {
   SearchSkills,
   SearchPals,
   AddPal,
+  DeletePal,
   PalboxSpace,
   PlayerDetail,
   SetPlayerLevel,
@@ -780,7 +781,7 @@ function PalsTab({
           status={status}
           onClose={() => setAdding(false)}
           say={say}
-          onAdded={onChanged}
+          onAdded={afterEdit}
         />
       )}
 
@@ -922,6 +923,11 @@ function PalsTab({
                   setBusy={setBusy}
                   say={say}
                   onChanged={afterEdit}
+                  onDeleted={async () => {
+                    setSelected(new Set());
+                    setEditing("");
+                    await afterEdit();
+                  }}
                 />
               )}
             </aside>
@@ -958,6 +964,7 @@ function PalEditor({
   setBusy,
   say,
   onChanged,
+  onDeleted,
 }: {
   targets: main.PalInfo[];
   status: main.Status | null;
@@ -967,6 +974,7 @@ function PalEditor({
   setBusy: (b: boolean) => void;
   say: (m: string, bad?: boolean) => void;
   onChanged: () => Promise<void>;
+  onDeleted: () => Promise<void>;
 }) {
   const pal = targets[0];
   const many = targets.length > 1;
@@ -1075,6 +1083,27 @@ function PalEditor({
       }
       say(many ? `${targets.length}마리 수정됨` : `${pal.name} 수정됨`);
       await onChanged();
+    } catch (e: any) {
+      say(String(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function del() {
+    const label = many
+      ? `선택한 ${targets.length}마리`
+      : `${pal.nickname || pal.name}`;
+    if (!confirm(`${label}를 세이브에서 완전히 삭제할까요? 되돌릴 수 없습니다.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      for (const t of targets) {
+        await DeletePal(t.instanceId);
+      }
+      say(`${label} 삭제됨`);
+      await onDeleted();
     } catch (e: any) {
       say(String(e), true);
     } finally {
@@ -1405,6 +1434,10 @@ function PalEditor({
         title={nothingOn ? "적용할 항목을 체크하세요" : ""}
       >
         {many ? `선택한 ${targets.length}마리에 적용` : "이 팰에 적용"}
+      </button>
+
+      <button className="danger delete" onClick={del} disabled={busy}>
+        {many ? `선택한 ${targets.length}마리 삭제` : "이 팰 삭제"}
       </button>
     </div>
   );

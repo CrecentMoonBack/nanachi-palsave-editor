@@ -22,6 +22,10 @@ export function BaseStorages(arg1) {
   return window['go']['main']['App']['BaseStorages'](arg1);
 }
 
+export function DeletePal(arg1) {
+  return window['go']['main']['App']['DeletePal'](arg1);
+}
+
 export function DeletePreset(arg1) {
   return window['go']['main']['App']['DeletePreset'](arg1);
 }

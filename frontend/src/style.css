@@ -731,6 +731,20 @@ button.apply {
   width: 100%;
 }
 
+/* Delete is destructive and irreversible, so it is set apart from apply: full
+   width but red, sitting below the primary action rather than beside it. */
+button.danger {
+  width: 100%;
+  margin-top: 8px;
+  background: transparent;
+  color: #d0342c;
+  border: 1px solid #d0342c;
+}
+button.danger:hover:not(:disabled) {
+  background: #d0342c;
+  color: #fff;
+}
+
 /* Ranges and hints: the editor writes to a save, so every field says what it
    means and what it accepts rather than relying on the input silently
    clamping. */
