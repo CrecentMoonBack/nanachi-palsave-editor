@@ -13,6 +13,8 @@ export function BasePals(arg1:string):Promise<Array<main.PalInfo>>;
 
 export function BaseStorages(arg1:string):Promise<Array<main.StorageInfo>>;
 
+export function DeletePal(arg1:string):Promise<void>;
+
 export function DeletePreset(arg1:string):Promise<void>;
 
 export function GiveContainerItem(arg1:string,arg2:string,arg3:number):Promise<number>;
