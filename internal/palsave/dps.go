@@ -245,7 +245,7 @@ func (w *World) MoveFromDPS(d *DPSStore, instance, container gvas.GUID) error {
 	setGUIDProp(pal.Params(), "OwnerPlayerUId", owner)
 	setSlotID(pal.Params(), container, slotIndex)
 
-	if err := w.appendCharacter(pal, owner, instance); err != nil {
+	if err := w.appendCharacter(pal, instance); err != nil {
 		return err
 	}
 	if err := cont.appendSlot(slotIndex, owner, instance); err != nil {

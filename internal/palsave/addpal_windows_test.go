@@ -290,6 +290,36 @@ func TestAddPalTakesTheRequestedShapeNotTheDonors(t *testing.T) {
 	t.Fatal("the new pal is not in the character map")
 }
 
+// An added pal must be keyed like every other pal: a zero PlayerUId, with
+// ownership carried in SaveParameter and the guild roster. A nonzero owner here
+// made the game read the pal as out-of-guild — no base work, no pick-up, culled
+// on reload — so this guards the exact regression.
+func TestAddPalGivesTheRecordAZeroMapKey(t *testing.T) {
+	w := loadLevelWorld(t)
+	owner, box := palboxOf(t, w)
+
+	id, err := w.AddPal(NewPalSpec{SpeciesID: "SheepBall", Level: 1, Rank: 1, Owner: owner, Container: box.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the key back from re-encoded bytes, not the in-memory struct.
+	w2 := reloadWorld(t, w)
+	for _, c := range w2.chars {
+		if c.InstanceID != id {
+			continue
+		}
+		if !c.PlayerUID.IsZero() {
+			t.Errorf("added pal map-key PlayerUId = %s, want zero", c.PlayerUID)
+		}
+		if o, ok := c.Pal.OwnerPlayerUID(); !ok || o != owner {
+			t.Errorf("owner in SaveParameter = %v, want %v", o, owner)
+		}
+		return
+	}
+	t.Fatal("added pal not found after reload")
+}
+
 // Bad input must be refused rather than written.
 func TestAddPalRejectsBadInput(t *testing.T) {
 	w := loadLevelWorld(t)
