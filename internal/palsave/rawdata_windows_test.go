@@ -269,14 +269,16 @@ func TestPalAccessorsMatchKnownSave(t *testing.T) {
 	}
 	t.Logf("levels of those: %v", levels)
 
-	// The Python run reported 345 owned pals, of which 54 흑천마, 25 홍등고래
-	// and 20 제노그리프.
-	if mine != 345 {
-		t.Errorf("owned pals = %d, want 345", mine)
+	// Baseline re-taken against the 2026-07-27 fixture, which the DPS storage
+	// work refreshed: the earlier 345/54/25/20 census belonged to a July-21 save
+	// that is no longer on hand. Counts dropped because pals moved into the
+	// restoration storage leave CharacterSaveParameterMap entirely.
+	if mine != 304 {
+		t.Errorf("owned pals = %d, want 304", mine)
 	}
 	for id, want := range map[string]int{
-		"IceHorse_Dark":   54,
-		"IceNarwhal_Fire": 25,
+		"IceHorse_Dark":   46,
+		"IceNarwhal_Fire": 3,
 		"BlackGriffon":    20,
 	} {
 		if species[id] != want {

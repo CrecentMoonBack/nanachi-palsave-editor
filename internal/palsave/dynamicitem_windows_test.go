@@ -240,14 +240,20 @@ func TestStackableItemSpillsIntoNewSlots(t *testing.T) {
 
 	const item = "Wood"
 	const maxStack = 9999
-	before := 0
+	// The chosen container may already hold some Wood, so measure the starting
+	// quantity and stack count rather than assume an empty one — the fixture is
+	// a live save whose inventory changes.
+	var beforeTotal int32
+	beforeStacks := 0
 	for _, s := range w.ContainerContents(cid) {
 		if s.ItemID == item {
-			before++
+			beforeStacks++
+			beforeTotal += s.Count
 		}
 	}
 
-	// Give 25,000: should land as 9999 + 9999 + 5002 across three new stacks.
+	// Give 25,000 more: it tops up any partial stack, then spills into new ones,
+	// none over the cap.
 	if _, err := w.GiveStackableItem(cid, item, 25000, maxStack); err != nil {
 		t.Fatalf("GiveStackableItem: %v", err)
 	}
@@ -267,11 +273,13 @@ func TestStackableItemSpillsIntoNewSlots(t *testing.T) {
 	if over > 0 {
 		t.Errorf("a stack holds %d, over the %d cap", over, maxStack)
 	}
-	if total != 25000 {
-		t.Errorf("total %s is %d, want 25000", item, total)
+	if total != beforeTotal+25000 {
+		t.Errorf("total %s is %d, want %d", item, total, beforeTotal+25000)
 	}
-	if stacks-before < 3 {
-		t.Errorf("25000 at cap 9999 should need 3 stacks, got %d new", stacks-before)
+	// 25,000 exceeds two full caps no matter how full the partial stack was, so
+	// it must open at least two new stacks.
+	if stacks-beforeStacks < 2 {
+		t.Errorf("25000 at cap 9999 should open ≥2 new stacks, got %d", stacks-beforeStacks)
 	}
 }
 
