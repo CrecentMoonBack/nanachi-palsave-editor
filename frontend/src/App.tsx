@@ -28,6 +28,10 @@ import {
   SearchPals,
   AddPal,
   DeletePal,
+  HasDPS,
+  DPSPals,
+  MovePalFromDPS,
+  MovePalToDPS,
   PalboxSpace,
   PlayerDetail,
   SetPlayerLevel,
@@ -470,7 +474,7 @@ function Welcome({
   );
 }
 
-type PalView = "box" | "party" | "base";
+type PalView = "box" | "party" | "base" | "dps";
 
 const VIEWS: { id: PalView; label: string }[] = [
   { id: "box", label: "팰박스" },
@@ -525,6 +529,8 @@ function PalsTab({
   const [level, setLevel] = useState(50);
   const [roster, setRoster] = useState<main.PalInfo[]>([]);
   const [basePals, setBasePals] = useState<main.PalInfo[]>([]);
+  const [dpsPals, setDpsPals] = useState<main.PalInfo[]>([]);
+  const [hasDps, setHasDps] = useState(false);
   const [editing, setEditing] = useState("");
   const [camp, setCamp] = useState(0); // 0 = every camp
   const [presets, setPresets] = useState<main.PresetInfo[]>([]);
@@ -550,12 +556,21 @@ function PalsTab({
     if (!uid) {
       setRoster([]);
       setBasePals([]);
+      setDpsPals([]);
+      setHasDps(false);
       return;
     }
     try {
-      const [mine, base] = await Promise.all([Pals(uid), BasePals(uid)]);
+      const [mine, base, dps, dpsOn] = await Promise.all([
+        Pals(uid),
+        BasePals(uid),
+        DPSPals(uid),
+        HasDPS(uid),
+      ]);
       setRoster(mine);
       setBasePals(base);
+      setDpsPals(dps);
+      setHasDps(dpsOn);
     } catch (e: any) {
       say(String(e), true);
     }
@@ -574,19 +589,26 @@ function PalsTab({
       ? camp
         ? basePals.filter((p) => p.camp === camp)
         : basePals
-      : roster.filter((p) => p.location === view);
+      : view === "dps"
+        ? dpsPals
+        : roster.filter((p) => p.location === view);
 
   const cards = summarise(active);
   const target = cards.find((s) => s.speciesId === pick);
   const members = pick ? active.filter((p) => p.speciesId === pick) : [];
   const current =
-    [...roster, ...basePals].find((p) => p.instanceId === editing) ?? null;
+    [...roster, ...basePals, ...dpsPals].find((p) => p.instanceId === editing) ??
+    null;
 
   const counts: Record<PalView, number> = {
     box: roster.filter((p) => p.location === "box").length,
     party: roster.filter((p) => p.location === "party").length,
     base: basePals.length,
+    dps: dpsPals.length,
   };
+
+  // The restoration-storage tab only exists for a player who has that file.
+  const views = hasDps ? [...VIEWS, { id: "dps" as PalView, label: "복원 스토리지" }] : VIEWS;
 
   const afterEdit = useCallback(async () => {
     await onChanged();
@@ -670,7 +692,7 @@ function PalsTab({
   return (
     <>
       <div className="subtabs">
-        {VIEWS.map((v) => (
+        {views.map((v) => (
           <button
             key={v.id}
             className={`subtab ${view === v.id ? "active" : ""}`}
@@ -718,6 +740,8 @@ function PalsTab({
             </option>
           ))}
         </select>
+        {view !== "dps" && (
+          <>
         <label>레벨</label>
         <input
           type="number"
@@ -773,6 +797,8 @@ function PalsTab({
         >
           팰 추가
         </button>
+          </>
+        )}
       </div>
 
       {adding && (
@@ -801,7 +827,9 @@ function PalsTab({
             ? "파티에 팰이 없습니다."
             : view === "base"
               ? "이 거점에는 팰이 없습니다."
-              : "팰박스가 비어 있습니다."}
+              : view === "dps"
+                ? "복원 스토리지가 비어 있습니다."
+                : "팰박스가 비어 있습니다."}
         </div>
       ) : (
         <div className="split">
@@ -928,6 +956,13 @@ function PalsTab({
                     setEditing("");
                     await afterEdit();
                   }}
+                  uid={uid}
+                  hasDps={hasDps}
+                  onMoved={async () => {
+                    setSelected(new Set());
+                    setEditing("");
+                    await afterEdit();
+                  }}
                 />
               )}
             </aside>
@@ -965,6 +1000,9 @@ function PalEditor({
   say,
   onChanged,
   onDeleted,
+  uid,
+  hasDps,
+  onMoved,
 }: {
   targets: main.PalInfo[];
   status: main.Status | null;
@@ -975,9 +1013,17 @@ function PalEditor({
   say: (m: string, bad?: boolean) => void;
   onChanged: () => Promise<void>;
   onDeleted: () => Promise<void>;
+  uid: string;
+  hasDps: boolean;
+  onMoved: () => Promise<void>;
 }) {
   const pal = targets[0];
   const many = targets.length > 1;
+  // Work suitability can be set on several pals together only when they are all
+  // the same species: the ranks are per-job and which jobs a pal has comes from
+  // its species, so a mixed selection has no single answer. Everything else
+  // still edits together.
+  const workEditable = !many || targets.every((t) => t.speciesId === pal.speciesId);
 
   const maxLevel = status?.maxLevel ?? 80;
   const maxRank = status?.maxRank ?? 5;
@@ -985,6 +1031,7 @@ function PalEditor({
   const maxSoul = status?.maxRankBonus ?? 20;
   const maxPassives = status?.maxPassives ?? 4;
   const maxWork = status?.maxWork ?? 10;
+  const maxFriendship = status?.maxFriendship ?? 200000;
 
   const [level, setLevel] = useState(pal.level);
   const [rank, setRank] = useState(pal.rank);
@@ -1070,7 +1117,7 @@ function PalEditor({
         if (on.friendship) {
           await SetPalFriendship(t.instanceId, friendship);
         }
-        if (on.work) {
+        if (on.work && workEditable) {
           // Written against this pal's own rows, not the seed's: a mixed
           // selection has different jobs per species.
           for (const w of t.work ?? []) {
@@ -1111,30 +1158,84 @@ function PalEditor({
     }
   }
 
+  // Restore stored pals from the restoration storage back into the palbox.
+  async function restore() {
+    const label = many ? `선택한 ${targets.length}마리` : `${pal.nickname || pal.name}`;
+    setBusy(true);
+    try {
+      for (const t of targets) {
+        await MovePalFromDPS(uid, t.instanceId);
+      }
+      say(`${label}를 팰박스로 꺼냈어요`);
+      await onMoved();
+    } catch (e: any) {
+      say(String(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Send pals from the palbox/party into the restoration storage.
+  async function store() {
+    const label = many ? `선택한 ${targets.length}마리` : `${pal.nickname || pal.name}`;
+    if (!confirm(`${label}를 복원 스토리지로 보낼까요?`)) return;
+    setBusy(true);
+    try {
+      for (const t of targets) {
+        await MovePalToDPS(uid, t.instanceId);
+      }
+      say(`${label}를 복원 스토리지로 보냈어요`);
+      await onMoved();
+    } catch (e: any) {
+      say(String(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function maxAll() {
     setLevel(maxLevel);
     setRank(maxRank);
     setTalents(Object.fromEntries(TALENTS.map((t) => [t.prop, maxTalent])));
     setSouls(Object.fromEntries(SOULS.map((s) => [s.prop, maxSoul])));
+    setFriendship(maxFriendship);
+    // Only the jobs this pal can actually do — a positive species base — go to
+    // the cap; jobs it has no aptitude for are left alone rather than invented.
+    // Skipped entirely for a mixed-species selection, where work is locked.
+    if (workEditable) {
+      setWork(
+        Object.fromEntries(
+          (pal.work ?? []).map((w) => [w.id, w.base > 0 ? maxWork : w.bonus]),
+        ),
+      );
+    }
     setOn((o) => ({
       ...o,
       level: true,
       rank: true,
       talents: true,
       souls: true,
-      // Friendship is left out: it has no max, so "전부 최대" has nothing
-      // sensible to set it to.
+      friendship: true,
+      work: workEditable,
     }));
   }
 
   // A per-group tick, shown only when editing several pals.
-  function Gate({ k }: { k: string }) {
+  function Gate({ k, disabled }: { k: string; disabled?: boolean }) {
     if (!many) return null;
     return (
-      <label className="gate" title="이 항목을 선택한 팰 전체에 적용">
+      <label
+        className="gate"
+        title={
+          disabled
+            ? "여러 종류를 함께 선택하면 노동 적성은 설정할 수 없습니다"
+            : "이 항목을 선택한 팰 전체에 적용"
+        }
+      >
         <input
           type="checkbox"
-          checked={!!on[k]}
+          checked={!disabled && !!on[k]}
+          disabled={disabled}
           onChange={(e) => setOn({ ...on, [k]: e.target.checked })}
         />
       </label>
@@ -1142,6 +1243,37 @@ function PalEditor({
   }
 
   const species = Array.from(new Set(targets.map((t) => t.name)));
+
+  // A stored pal is not in the world, so its stats cannot be edited in place —
+  // it has to be restored first. The panel shows only that action.
+  if (pal.location === "dps") {
+    return (
+      <div className="editor">
+        <div className="editor-head">
+          <Icon file={pal.icon} alt={pal.name} />
+          <div className="info">
+            <div className="title">
+              {many ? `${targets.length}마리 선택됨` : pal.nickname || pal.name}
+            </div>
+            <div className="sub">
+              {many
+                ? species.slice(0, 3).join(", ") +
+                  (species.length > 3 ? ` 외 ${species.length - 3}종` : "")
+                : pal.name}
+              {!many && pal.isBoss && <span className="badge">알파</span>}
+              {!many && pal.awakened && <span className="badge">각성</span>}
+            </div>
+          </div>
+        </div>
+        <div className="bulk-note">
+          복원 스토리지의 팰은 꺼낸 뒤에 편집할 수 있습니다.
+        </div>
+        <button className="primary move" onClick={restore} disabled={busy}>
+          {many ? `선택한 ${targets.length}마리 팰박스로 꺼내기` : "팰박스로 꺼내기"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="editor">
@@ -1338,13 +1470,14 @@ function PalEditor({
         </div>
         <div className="hint">
           함께 지낸 시간이 쌓이는 값으로, 게임에서는 하트 게이지로 보입니다.
-          여기서는 저장된 원래 숫자를 그대로 다룹니다. <b>상한은 확인하지
-          못했습니다</b> — 이 세이브에서 관측된 최대는 189,500입니다.
+          여기서는 저장된 원래 숫자를 그대로 다룹니다. 상한은{" "}
+          {maxFriendship.toLocaleString()} — 여기서 하트 게이지가 가득 찹니다.
         </div>
         <div className="field-row">
           <input
             type="number"
             min={0}
+            max={maxFriendship}
             value={friendship}
             onChange={(e) => {
               setFriendship(Number(e.target.value));
@@ -1354,9 +1487,11 @@ function PalEditor({
         </div>
       </div>
 
-      <div className={`field-group ${many && !on.work ? "off" : ""}`}>
+      <div
+        className={`field-group ${(many && !on.work) || !workEditable ? "off" : ""}`}
+      >
         <div className="group-title">
-          <Gate k="work" />
+          <Gate k="work" disabled={!workEditable} />
           노동 적성 <span className="range">0–{maxWork}</span>
         </div>
         <div className="hint">
@@ -1365,7 +1500,8 @@ function PalEditor({
           기록되고, 종족이 원래 가진 적성은 따로입니다. 둘을 합치면 게임에서 몇
           등급으로 보이는지는 아직 확인하지 못해서, 여기서는 각각 그대로
           보여줍니다.
-          {many && " 여러 종족을 함께 고르면 기본 적성은 첫 팰 기준입니다."}
+          {!workEditable &&
+            " 여러 종류의 팰을 함께 선택하면 노동 적성은 설정할 수 없습니다 — 같은 종류만 함께 설정하세요."}
         </div>
         <div className="work-grid">
           {(pal.work ?? []).map((w) => {
@@ -1379,11 +1515,17 @@ function PalEditor({
                 </span>
                 <input
                   type="number"
-                  min={0}
+                  min={w.base > 0 ? 1 : 0}
                   max={maxWork}
                   value={cur}
+                  disabled={!workEditable}
                   onChange={(e) => {
-                    setWork({ ...work, [w.id]: Number(e.target.value) });
+                    // A job the species innately has cannot go to 0 — that broke
+                    // things in-game. A job it does not have stays allowed at 0;
+                    // forcing those to 1 causes its own trouble.
+                    const floor = w.base > 0 ? 1 : 0;
+                    const n = Number(e.target.value);
+                    setWork({ ...work, [w.id]: n < floor ? floor : n });
                     enable("work");
                   }}
                 />
@@ -1435,6 +1577,14 @@ function PalEditor({
       >
         {many ? `선택한 ${targets.length}마리에 적용` : "이 팰에 적용"}
       </button>
+
+      {hasDps && (pal.location === "box" || pal.location === "party") && (
+        <button className="move" onClick={store} disabled={busy}>
+          {many
+            ? `선택한 ${targets.length}마리 복원 스토리지로`
+            : "복원 스토리지로 보내기"}
+        </button>
+      )}
 
       <button className="danger delete" onClick={del} disabled={busy}>
         {many ? `선택한 ${targets.length}마리 삭제` : "이 팰 삭제"}
