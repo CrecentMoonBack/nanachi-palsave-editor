@@ -241,10 +241,14 @@ func preparePal(p *Pal, spec NewPalSpec, instance gvas.GUID, slotIndex int32) er
 
 	// A nickname belonging to the donor would follow the copy over.
 	params.Delete("NickName")
-	// Moves are per-species. Left alone, a Sheepball arrives knowing whatever
-	// the donor had learned.
-	params.Delete("EquipWaza")
-	params.Delete("MasteredWaza")
+	// The donor's equipped and mastered moves are kept, on purpose. They are
+	// another species' moves — cosmetically wrong — but they are valid move ids
+	// the game accepts, and the pal is functional with them. Deleting them left
+	// the pal with no moves at all, which the game treats as a broken record: it
+	// will not work, cannot be picked up, and is dropped on the next reload. A
+	// wrong-but-working move set is far better, and the user can change it in the
+	// skill editor. (EquipWaza / MasteredWaza left intact.)
+	//
 	// Anything tying the copy to the donor's history.
 	params.Delete("PassiveSkillList")
 	params.Delete("CharacterMakeInfo")
