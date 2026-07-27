@@ -387,18 +387,34 @@ func TestCampStorageEditSurvivesSaveAndReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Pick the box with the most free slots: the fixture is a live save, and
+	// 4321 PalSpheres span several stacks, so a nearly-full chest cannot hold
+	// them. The roomiest box comfortably can.
 	var target StorageInfo
 	var owner string
+	var bestFree int32 = -1
 	for _, p := range players {
 		boxes, err := a.BaseStorages(p.UID)
-		if err != nil || len(boxes) == 0 {
+		if err != nil {
 			continue
 		}
-		target, owner = boxes[0], p.UID
-		break
+		for _, box := range boxes {
+			cid, err := gvas.ParseGUID(box.ContainerID)
+			if err != nil {
+				continue
+			}
+			c, ok := a.world.Container(cid)
+			if !ok {
+				continue
+			}
+			free := c.Capacity - int32(len(c.Slots))
+			if free > bestFree {
+				bestFree, target, owner = free, box, p.UID
+			}
+		}
 	}
-	if owner == "" {
-		t.Skip("fixture has no base camp storage")
+	if owner == "" || bestFree < 10 {
+		t.Skip("fixture has no base camp storage with room to spare")
 	}
 
 	before := int32(0)
@@ -647,6 +663,104 @@ func TestAddPalSurvivesSaveAndReopen(t *testing.T) {
 	}
 	t.Logf("%s: added %d pals, %d characters before, %d after",
 		name, n, len(beforeIDs), len(afterIDs))
+}
+
+// TestDPSMoveSurvivesSaveAndReopen drives the restoration-storage feature the
+// way the UI does: pull a stored pal into the palbox, save both files, reopen,
+// then send it back — proving the two-file move persists in both directions.
+func TestDPSMoveSurvivesSaveAndReopen(t *testing.T) {
+	if err := oodle.Available(); err != nil {
+		t.Skipf("native codec unavailable: %v", err)
+	}
+	level := copyFixture(t)
+
+	a := NewApp()
+	if _, err := a.OpenSave(level); err != nil {
+		t.Fatal(err)
+	}
+
+	// The player who owns a restoration-storage file with pals in it.
+	players, _ := a.Players()
+	var uid string
+	for _, p := range players {
+		if a.HasDPS(p.UID) {
+			if pals, _ := a.DPSPals(p.UID); len(pals) > 0 {
+				uid = p.UID
+				break
+			}
+		}
+	}
+	if uid == "" {
+		t.Skip("no player with a non-empty restoration storage")
+	}
+
+	stored, _ := a.DPSPals(uid)
+	beforeDPS := len(stored)
+	target := stored[0]
+	instance := target.InstanceID
+	species := target.SpeciesID
+
+	inWorld := func(app *App, id string) bool {
+		for _, c := range app.world.Chars() {
+			if c.InstanceID.String() == id {
+				return true
+			}
+		}
+		return false
+	}
+	if inWorld(a, instance) {
+		t.Fatalf("stored pal %s is already in the world", instance)
+	}
+
+	// Restore it.
+	if err := a.MovePalFromDPS(uid, instance); err != nil {
+		t.Fatalf("MovePalFromDPS: %v", err)
+	}
+	if got, _ := a.DPSPals(uid); len(got) != beforeDPS-1 {
+		t.Errorf("DPS count %d after restore, want %d", len(got), beforeDPS-1)
+	}
+	if !inWorld(a, instance) {
+		t.Fatal("restored pal not in world")
+	}
+	if _, err := a.SaveToDisk(); err != nil {
+		t.Fatalf("SaveToDisk: %v", err)
+	}
+
+	// Reopen from disk: the pal must be in the world, gone from storage, intact.
+	b := NewApp()
+	if _, err := b.OpenSave(level); err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if !inWorld(b, instance) {
+		t.Error("restored pal missing after save and reopen")
+	}
+	if got, _ := b.DPSPals(uid); len(got) != beforeDPS-1 {
+		t.Errorf("DPS count %d after reopen, want %d", len(got), beforeDPS-1)
+	}
+	for _, c := range b.world.Chars() {
+		if c.InstanceID.String() == instance && c.Pal.Species() != species {
+			t.Errorf("restored species %q, want %q", c.Pal.Species(), species)
+		}
+	}
+
+	// Send it back to storage and prove that persists too.
+	if err := b.MovePalToDPS(uid, instance); err != nil {
+		t.Fatalf("MovePalToDPS: %v", err)
+	}
+	if _, err := b.SaveToDisk(); err != nil {
+		t.Fatalf("SaveToDisk back: %v", err)
+	}
+	c := NewApp()
+	if _, err := c.OpenSave(level); err != nil {
+		t.Fatalf("reopen 2: %v", err)
+	}
+	if inWorld(c, instance) {
+		t.Error("pal still in world after being sent back to storage")
+	}
+	if got, _ := c.DPSPals(uid); len(got) != beforeDPS {
+		t.Errorf("DPS count %d after round trip, want %d", len(got), beforeDPS)
+	}
+	t.Logf("moved %s (%s) box<->storage across two saves", species, instance)
 }
 
 // The species picker opens on whatever SearchPals returns first, so ordinary

@@ -745,6 +745,28 @@ button.danger:hover:not(:disabled) {
   color: #fff;
 }
 
+/* Move between palbox and restoration storage: a neutral full-width action,
+   distinct from the red delete below it. */
+button.move {
+  width: 100%;
+  margin-top: 8px;
+  background: transparent;
+  color: #2f7d4f;
+  border: 1px solid #2f7d4f;
+}
+button.move:hover:not(:disabled) {
+  background: #2f7d4f;
+  color: #fff;
+}
+button.primary.move {
+  background: #2f7d4f;
+  color: #fff;
+  border: 1px solid #2f7d4f;
+}
+button.primary.move:hover:not(:disabled) {
+  background: #276a43;
+}
+
 /* Ranges and hints: the editor writes to a save, so every field says what it
    means and what it accepts rather than relying on the input silently
    clamping. */

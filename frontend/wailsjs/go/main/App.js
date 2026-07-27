@@ -22,6 +22,10 @@ export function BaseStorages(arg1) {
   return window['go']['main']['App']['BaseStorages'](arg1);
 }
 
+export function DPSPals(arg1) {
+  return window['go']['main']['App']['DPSPals'](arg1);
+}
+
 export function DeletePal(arg1) {
   return window['go']['main']['App']['DeletePal'](arg1);
 }
@@ -38,8 +42,20 @@ export function GiveItem(arg1, arg2, arg3) {
   return window['go']['main']['App']['GiveItem'](arg1, arg2, arg3);
 }
 
+export function HasDPS(arg1) {
+  return window['go']['main']['App']['HasDPS'](arg1);
+}
+
 export function Inventory(arg1) {
   return window['go']['main']['App']['Inventory'](arg1);
+}
+
+export function MovePalFromDPS(arg1, arg2) {
+  return window['go']['main']['App']['MovePalFromDPS'](arg1, arg2);
+}
+
+export function MovePalToDPS(arg1, arg2) {
+  return window['go']['main']['App']['MovePalToDPS'](arg1, arg2);
 }
 
 export function OpenSave(arg1) {

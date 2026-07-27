@@ -110,6 +110,10 @@ jobs:
           cp README.md "$DIR/"
           cp docs/THIRD_PARTY.md "$DIR/"
           cp scripts/fetch-icons.sh "$DIR/"
+          # Windows-friendly icon fetch: double-clickable .bat wrapping the .ps1,
+          # so players never need Git Bash or a command line.
+          cp scripts/fetch-icons.ps1 "$DIR/"
+          cp scripts/fetch-icons.bat "$DIR/"
 
           # Fail loudly rather than publish game artwork by accident.
           if find "$DIR" -iname '*.webp' | grep -q .; then
@@ -148,11 +152,12 @@ jobs:
             팰·아이템 이미지는 게임 회사 저작물이라 배포판에 넣지 않습니다.
             **없어도 전부 동작하며** 이름이 한글로 표시됩니다.
 
-            그림까지 원하면 압축 푼 폴더에서 (git 필요, 1~2분):
+            그림까지 원하면 압축 푼 폴더에서 **`fetch-icons.bat` 더블클릭** (한 번만):
 
-            ```
-            bash fetch-icons.sh
-            ```
+            - 설치할 것도, 명령어도 없습니다. 검은 창이 뜨고 "완료!" 가 나오면 끝.
+            - "Windows의 PC 보호" 경고 → **추가 정보** → **실행**.
+            - git 이 있으면 약 34MB, 없으면 자동으로 전체본(약 380MB)을 받아 그림만 꺼냅니다.
+            - 맥/리눅스거나 명령어가 편하면 `bash fetch-icons.sh` 도 됩니다.
 
             `exe` 옆에 `assets/icons` 가 생기고 2,400여 장이 채워집니다.
 

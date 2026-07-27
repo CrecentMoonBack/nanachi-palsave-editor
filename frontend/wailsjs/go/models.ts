@@ -428,6 +428,7 @@ export namespace main {
 	    maxTalent: number;
 	    maxRankBonus: number;
 	    maxWork: number;
+	    maxFriendship: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -447,6 +448,7 @@ export namespace main {
 	        this.maxTalent = source["maxTalent"];
 	        this.maxRankBonus = source["maxRankBonus"];
 	        this.maxWork = source["maxWork"];
+	        this.maxFriendship = source["maxFriendship"];
 	    }
 	}
 	export class StorageInfo {

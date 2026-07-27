@@ -13,6 +13,8 @@ export function BasePals(arg1:string):Promise<Array<main.PalInfo>>;
 
 export function BaseStorages(arg1:string):Promise<Array<main.StorageInfo>>;
 
+export function DPSPals(arg1:string):Promise<Array<main.PalInfo>>;
+
 export function DeletePal(arg1:string):Promise<void>;
 
 export function DeletePreset(arg1:string):Promise<void>;
@@ -21,7 +23,13 @@ export function GiveContainerItem(arg1:string,arg2:string,arg3:number):Promise<n
 
 export function GiveItem(arg1:string,arg2:string,arg3:number):Promise<number>;
 
+export function HasDPS(arg1:string):Promise<boolean>;
+
 export function Inventory(arg1:string):Promise<Array<main.ItemInfo>>;
+
+export function MovePalFromDPS(arg1:string,arg2:string):Promise<void>;
+
+export function MovePalToDPS(arg1:string,arg2:string):Promise<void>;
 
 export function OpenSave(arg1:string):Promise<main.SaveInfo>;
 

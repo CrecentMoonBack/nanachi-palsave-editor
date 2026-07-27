@@ -34,6 +34,11 @@ type App struct {
 	// players maps a player UID to their decoded Players/<uid>.sav.
 	players map[string]*playerFile
 
+	// dpsStores maps a player UID to their decoded Players/<uid>_dps.sav — the
+	// restoration storage (Dimensional Pal Storage). A player who never used it
+	// has no entry here.
+	dpsStores map[string]*dpsFile
+
 	// presets are the user's saved passive sets, stored outside any save file.
 	presets *presetStore
 }
@@ -48,10 +53,17 @@ type playerFile struct {
 	dirty bool
 }
 
+type dpsFile struct {
+	path  string
+	store *palsave.DPSStore
+	dirty bool
+}
+
 func NewApp() *App {
 	return &App{
-		players: map[string]*playerFile{},
-		presets: newPresetStore(),
+		players:   map[string]*playerFile{},
+		dpsStores: map[string]*dpsFile{},
+		presets:   newPresetStore(),
 	}
 }
 
@@ -79,26 +91,28 @@ type Status struct {
 
 	// Editing bounds, so the UI clamps to the same numbers the setters
 	// enforce instead of keeping its own copy of each limit.
-	MaxPassives  int `json:"maxPassives"`
-	MaxLevel     int `json:"maxLevel"`
-	MaxRank      int `json:"maxRank"`
-	MaxTalent    int `json:"maxTalent"`
-	MaxRankBonus int `json:"maxRankBonus"`
-	MaxWork      int `json:"maxWork"`
+	MaxPassives   int `json:"maxPassives"`
+	MaxLevel      int `json:"maxLevel"`
+	MaxRank       int `json:"maxRank"`
+	MaxTalent     int `json:"maxTalent"`
+	MaxRankBonus  int `json:"maxRankBonus"`
+	MaxWork       int `json:"maxWork"`
+	MaxFriendship int `json:"maxFriendship"`
 }
 
 func (a *App) Status() Status {
 	s := Status{
-		IconsOK:      icons.Available(),
-		IconCount:    icons.Count(),
-		SaveOpen:     a.world != nil,
-		SavePath:     a.levelPath,
-		MaxPassives:  MaxPassives,
-		MaxLevel:     palsave.MaxPalLevel,
-		MaxRank:      palsave.MaxRank,
-		MaxTalent:    palsave.MaxTalent,
-		MaxRankBonus: palsave.MaxRankBonus,
-		MaxWork:      palsave.MaxWorkSuitabilityRank,
+		IconsOK:       icons.Available(),
+		IconCount:     icons.Count(),
+		SaveOpen:      a.world != nil,
+		SavePath:      a.levelPath,
+		MaxPassives:   MaxPassives,
+		MaxLevel:      palsave.MaxPalLevel,
+		MaxRank:       palsave.MaxRank,
+		MaxTalent:     palsave.MaxTalent,
+		MaxRankBonus:  palsave.MaxRankBonus,
+		MaxWork:       palsave.MaxWorkSuitabilityRank,
+		MaxFriendship: palsave.MaxFriendship,
 	}
 	if err := oodle.Available(); err != nil {
 		s.CodecError = err.Error()
@@ -168,7 +182,9 @@ func (a *App) OpenSave(levelPath string) (*SaveInfo, error) {
 	a.file = f
 	a.world = w
 	a.players = map[string]*playerFile{}
+	a.dpsStores = map[string]*dpsFile{}
 	a.loadPlayerSaves()
+	a.loadDPSStores()
 
 	info := &SaveInfo{
 		Path:        levelPath,
@@ -202,6 +218,11 @@ func (a *App) loadPlayerSaves() {
 		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".sav") {
 			continue
 		}
+		// Restoration-storage files sit in the same directory but are a different
+		// shape; loadDPSStores handles them.
+		if strings.HasSuffix(strings.ToLower(e.Name()), "_dps.sav") {
+			continue
+		}
 		p := filepath.Join(dir, e.Name())
 		data, err := os.ReadFile(p)
 		if err != nil {
@@ -224,6 +245,62 @@ func (a *App) loadPlayerSaves() {
 			continue
 		}
 		a.players[uid.String()] = &playerFile{path: p, save: ps}
+	}
+}
+
+// loadDPSStores reads every restoration-storage file (<uid>_dps.sav) in the
+// Players directory and links it to its owner. The owner is the player whose
+// plain save shares the filename stem, which works even for an empty store; a
+// store with pals falls back to their recorded owner.
+//
+// A failure to read one is skipped, not fatal — the rest of the save stays
+// editable, exactly as with player saves.
+func (a *App) loadDPSStores() {
+	dir := filepath.Join(filepath.Dir(a.levelPath), "Players")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(name), "_dps.sav") {
+			continue
+		}
+		p := filepath.Join(dir, name)
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		raw, _, err := oodle.DecompressSav(data)
+		if err != nil {
+			continue
+		}
+		f, err := gvas.Decode(raw, gvas.PalworldOptions())
+		if err != nil {
+			continue
+		}
+		store, err := palsave.NewDPSStore(f, gvas.PalworldOptions())
+		if err != nil {
+			continue
+		}
+
+		uid := ""
+		sibling := name[:len(name)-len("_dps.sav")] + ".sav"
+		for k, pf := range a.players {
+			if strings.EqualFold(filepath.Base(pf.path), sibling) {
+				uid = k
+				break
+			}
+		}
+		if uid == "" {
+			if pals := store.Pals(); len(pals) > 0 {
+				uid = pals[0].Owner.String()
+			}
+		}
+		if uid == "" {
+			continue
+		}
+		a.dpsStores[uid] = &dpsFile{path: p, store: store}
 	}
 }
 
@@ -343,6 +420,8 @@ const (
 	LocationBox   = "box"
 	LocationParty = "party"
 	LocationBase  = "base"
+	// LocationDPS marks a pal held in restoration storage rather than the world.
+	LocationDPS = "dps"
 )
 
 // describeWork builds a row per job, in the game's own order so the list does
@@ -539,6 +618,82 @@ func (a *App) describePal(uid string, c *palsave.CharEntry) PalInfo {
 	}
 	info.Icon = palIcon(species)
 	return info
+}
+
+// --- restoration storage (DPS) --------------------------------------------
+
+// HasDPS reports whether a player has a restoration-storage file, so the UI can
+// show or hide the storage panel.
+func (a *App) HasDPS(uid string) bool {
+	_, ok := a.dpsStores[uid]
+	return ok
+}
+
+// DPSPals lists the pals a player is keeping in restoration storage.
+func (a *App) DPSPals(uid string) ([]PalInfo, error) {
+	if a.world == nil {
+		return nil, fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	df, ok := a.dpsStores[uid]
+	if !ok {
+		return []PalInfo{}, nil
+	}
+	out := []PalInfo{}
+	for _, dp := range df.store.Pals() {
+		entry := &palsave.CharEntry{Pal: dp.Pal, InstanceID: dp.InstanceID, PlayerUID: dp.Owner}
+		info := a.describePal(uid, entry)
+		info.Location = LocationDPS
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+// MovePalFromDPS restores a stored pal into the player's palbox.
+func (a *App) MovePalFromDPS(uid, instanceID string) error {
+	if a.world == nil {
+		return fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	df, ok := a.dpsStores[uid]
+	if !ok {
+		return fmt.Errorf("이 플레이어의 복원 스토리지가 없습니다")
+	}
+	pf, ok := a.players[uid]
+	if !ok {
+		return fmt.Errorf("플레이어 세이브가 없어 팰박스를 알 수 없습니다")
+	}
+	box, ok := pf.save.PalStorageContainer()
+	if !ok {
+		return fmt.Errorf("팰박스를 찾을 수 없습니다")
+	}
+	id, err := gvas.ParseGUID(instanceID)
+	if err != nil {
+		return err
+	}
+	if err := a.world.MoveFromDPS(df.store, id, box); err != nil {
+		return err
+	}
+	df.dirty = true
+	return nil
+}
+
+// MovePalToDPS moves a pal from the world into restoration storage.
+func (a *App) MovePalToDPS(uid, instanceID string) error {
+	if a.world == nil {
+		return fmt.Errorf("세이브가 열려 있지 않습니다")
+	}
+	df, ok := a.dpsStores[uid]
+	if !ok {
+		return fmt.Errorf("이 플레이어의 복원 스토리지가 없습니다")
+	}
+	id, err := gvas.ParseGUID(instanceID)
+	if err != nil {
+		return err
+	}
+	if err := a.world.MoveToDPS(df.store, id); err != nil {
+		return err
+	}
+	df.dirty = true
+	return nil
 }
 
 // --- base camps -----------------------------------------------------------
@@ -1809,6 +1964,33 @@ func (a *App) savePlayerFiles(stamp string) (int, error) {
 			return n, err
 		}
 		pf.dirty = false
+		n++
+	}
+
+	for uid, df := range a.dpsStores {
+		if !df.dirty {
+			continue
+		}
+		raw, err := df.store.Encode()
+		if err != nil {
+			return n, fmt.Errorf("%s DPS 인코드 실패: %w", uid, err)
+		}
+		packed, err := oodle.CompressSav(raw, a.saveType)
+		if err != nil {
+			return n, fmt.Errorf("%s DPS 압축 실패: %w", uid, err)
+		}
+		orig, err := os.ReadFile(df.path)
+		if err != nil {
+			return n, err
+		}
+		backup := fmt.Sprintf("%s.%s.bak", df.path, stamp)
+		if err := os.WriteFile(backup, orig, 0o644); err != nil {
+			return n, fmt.Errorf("%s DPS 백업 실패: %w", uid, err)
+		}
+		if err := os.WriteFile(df.path, packed, 0o644); err != nil {
+			return n, err
+		}
+		df.dirty = false
 		n++
 	}
 	return n, nil
