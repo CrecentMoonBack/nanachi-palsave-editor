@@ -276,9 +276,11 @@ func TestAddPalTakesTheRequestedShapeNotTheDonors(t *testing.T) {
 		if o, ok := p.OwnerPlayerUID(); !ok || o != owner {
 			t.Errorf("owner is %v, want %v", o, owner)
 		}
-		// Moves belong to the donor's species and must not come along.
-		if p.Params().Has("EquipWaza") || p.Params().Has("MasteredWaza") {
-			t.Error("the donor's moves survived the copy")
+		// The donor's moves are kept, so the pal is not left moveless — a pal
+		// with no EquipWaza is treated as a broken record in-game (it will not
+		// work, cannot be picked up, and is dropped on reload).
+		if !p.Params().Has("EquipWaza") {
+			t.Error("the new pal has no EquipWaza; a moveless pal is culled in-game")
 		}
 		if p.Params().Has("NickName") {
 			t.Error("the donor's nickname survived the copy")
@@ -455,6 +457,11 @@ func TestTemplateDonorDecodesAndCarriesNoOwner(t *testing.T) {
 	}
 	if p.CharacterID() == "" {
 		t.Error("template donor has no CharacterID")
+	}
+	// The template must carry moves, or a pal added to an empty save would be
+	// left moveless — the very state the game culls.
+	if !p.Params().Has("EquipWaza") {
+		t.Error("template donor has no EquipWaza; empty-save adds would be moveless")
 	}
 	if id, ok := p.OwnerPlayerUID(); ok && id != (gvas.GUID{}) {
 		t.Errorf("template donor carries a non-zero owner %v; it ships publicly", id)
