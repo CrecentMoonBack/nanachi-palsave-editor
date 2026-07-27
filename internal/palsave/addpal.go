@@ -215,7 +215,7 @@ func (w *World) AddPal(spec NewPalSpec) (gvas.GUID, error) {
 		return zero, err
 	}
 
-	if err := w.appendCharacter(pal, spec.Owner, instance); err != nil {
+	if err := w.appendCharacter(pal, instance); err != nil {
 		return zero, err
 	}
 	if err := container.appendSlot(slotIndex, spec.Owner, instance); err != nil {
@@ -326,7 +326,7 @@ func (w *World) donorPal() (*CharEntry, bool) {
 
 // appendCharacter adds the record to CharacterSaveParameterMap and registers
 // it with the in-memory world, so the new pal is editable straight away.
-func (w *World) appendCharacter(p *Pal, owner, instance gvas.GUID) error {
+func (w *World) appendCharacter(p *Pal, instance gvas.GUID) error {
 	m, err := w.mapProp("CharacterSaveParameterMap")
 	if err != nil {
 		return err
@@ -335,8 +335,16 @@ func (w *World) appendCharacter(p *Pal, owner, instance gvas.GUID) error {
 		return fmt.Errorf("palsave: CharacterSaveParameterMap is empty")
 	}
 
+	// A pal's map key carries a zero PlayerUId — every one of the ~1,800 pals in
+	// the live save does. A pal's owner lives in SaveParameter.OwnerPlayerUId and
+	// the guild roster, not in this key; only a player's own record keys itself
+	// by a real id. Writing the owner here (as this once did) made the game read
+	// the pal as belonging to no guild of the player's: it would not work at a
+	// base, could not be picked up (no V prompt), and was dropped on reload.
+	// Free-roam jobs like mining still ran, which is why it looked like a partial
+	// break rather than an ownership one.
 	key := gvas.NewProperties()
-	setGUIDProp(key, "PlayerUId", owner)
+	setGUIDProp(key, "PlayerUId", gvas.GUID{})
 	setGUIDProp(key, "InstanceId", instance)
 	key.Set("DebugName", &gvas.StrProperty{Value: gvas.Str("")})
 
@@ -372,7 +380,7 @@ func (w *World) appendCharacter(p *Pal, owner, instance gvas.GUID) error {
 	w.chars = append(w.chars, &CharEntry{
 		Index:      len(m.Entries) - 1,
 		Pal:        p,
-		PlayerUID:  owner,
+		PlayerUID:  gvas.GUID{}, // matches the zero key, as a pal's record does
 		InstanceID: instance,
 		arr:        arr,
 	})
