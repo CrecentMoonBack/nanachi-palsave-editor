@@ -37,20 +37,21 @@ type presetStore struct {
 	loaded bool
 }
 
-// presetPath is where the file lives: the per-user config directory, falling
-// back to beside the executable when the OS will not name one.
-func presetPath() string {
+// presetPath is where a preset file lives: the per-user config directory,
+// falling back to beside the executable when the OS will not name one. The file
+// name is passed in so passive and skill presets get their own file.
+func presetPath(file string) string {
 	if dir, err := os.UserConfigDir(); err == nil {
-		return filepath.Join(dir, "NanachiPalSaveEditor", "passive-presets.json")
+		return filepath.Join(dir, "NanachiPalSaveEditor", file)
 	}
 	if exe, err := os.Executable(); err == nil {
-		return filepath.Join(filepath.Dir(exe), "passive-presets.json")
+		return filepath.Join(filepath.Dir(exe), file)
 	}
-	return "passive-presets.json"
+	return file
 }
 
-func newPresetStore() *presetStore {
-	return &presetStore{path: presetPath()}
+func newPresetStore(file string) *presetStore {
+	return &presetStore{path: presetPath(file)}
 }
 
 // load reads the file once. A missing file is not an error — it just means no

@@ -7,6 +7,8 @@ export function AddPal(arg1:string,arg2:string,arg3:number,arg4:number,arg5:Reco
 
 export function ApplyPreset(arg1:string,arg2:string):Promise<Array<main.PassiveInfo>>;
 
+export function ApplySkillPreset(arg1:string,arg2:string):Promise<Array<main.SkillInfo>>;
+
 export function BaseCamps(arg1:string):Promise<Array<main.CampInfo>>;
 
 export function BasePals(arg1:string):Promise<Array<main.PalInfo>>;
@@ -18,6 +20,8 @@ export function DPSPals(arg1:string):Promise<Array<main.PalInfo>>;
 export function DeletePal(arg1:string):Promise<void>;
 
 export function DeletePreset(arg1:string):Promise<void>;
+
+export function DeleteSkillPreset(arg1:string):Promise<void>;
 
 export function GiveContainerItem(arg1:string,arg2:string,arg3:number):Promise<number>;
 
@@ -50,6 +54,8 @@ export function Presets():Promise<Array<main.PresetInfo>>;
 export function Relics(arg1:string):Promise<Array<main.RelicInfo>>;
 
 export function SavePreset(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function SaveSkillPreset(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function SaveToDisk():Promise<main.SaveResult>;
 
@@ -98,6 +104,8 @@ export function SetPlayerUnusedPoints(arg1:string,arg2:number):Promise<void>;
 export function SetRelic(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function SetSlotCount(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function SkillPresets():Promise<Array<main.SkillPresetInfo>>;
 
 export function Status():Promise<main.Status>;
 

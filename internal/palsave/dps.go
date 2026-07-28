@@ -248,7 +248,7 @@ func (w *World) MoveFromDPS(d *DPSStore, instance, container gvas.GUID) error {
 	if err := w.appendCharacter(pal, instance); err != nil {
 		return err
 	}
-	if err := cont.appendSlot(slotIndex, owner, instance); err != nil {
+	if err := cont.appendSlot(slotIndex, instance); err != nil {
 		return err
 	}
 	if err := w.registerInGuild(owner, instance); err != nil {

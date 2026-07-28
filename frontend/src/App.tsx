@@ -42,6 +42,9 @@ import {
   Presets,
   SavePreset,
   DeletePreset,
+  SkillPresets,
+  SaveSkillPreset,
+  DeleteSkillPreset,
   SetItemCount,
   SetPalLevel,
   SetPalPassives,
@@ -536,6 +539,8 @@ function PalsTab({
   const [presets, setPresets] = useState<main.PresetInfo[]>([]);
   const [presetPick, setPresetPick] = useState("");
   const [managing, setManaging] = useState(false);
+  const [skillPresets, setSkillPresets] = useState<main.SkillPresetInfo[]>([]);
+  const [managingSkills, setManagingSkills] = useState(false);
   const [adding, setAdding] = useState(false);
   // Instance ids ticked for bulk work. A Set so toggling one row does not
   // rebuild an array of a few hundred entries.
@@ -544,6 +549,9 @@ function PalsTab({
   const loadPresets = useCallback(() => {
     Presets()
       .then(setPresets)
+      .catch((e) => say(String(e), true));
+    SkillPresets()
+      .then(setSkillPresets)
       .catch((e) => say(String(e), true));
   }, [say]);
 
@@ -821,6 +829,15 @@ function PalsTab({
         />
       )}
 
+      {managingSkills && (
+        <SkillPresetManager
+          presets={skillPresets}
+          onClose={() => setManagingSkills(false)}
+          onChanged={loadPresets}
+          say={say}
+        />
+      )}
+
       {cards.length === 0 ? (
         <div className="empty">
           {view === "party"
@@ -963,6 +980,8 @@ function PalsTab({
                     setEditing("");
                     await afterEdit();
                   }}
+                  skillPresets={skillPresets}
+                  onManageSkills={() => setManagingSkills(true)}
                 />
               )}
             </aside>
@@ -1003,6 +1022,8 @@ function PalEditor({
   uid,
   hasDps,
   onMoved,
+  skillPresets,
+  onManageSkills,
 }: {
   targets: main.PalInfo[];
   status: main.Status | null;
@@ -1016,6 +1037,8 @@ function PalEditor({
   uid: string;
   hasDps: boolean;
   onMoved: () => Promise<void>;
+  skillPresets: main.SkillPresetInfo[];
+  onManageSkills: () => void;
 }) {
   const pal = targets[0];
   const many = targets.length > 1;
@@ -1559,6 +1582,32 @@ function PalEditor({
           팰이 장착하는 공격 기술입니다. 칩을 누르면 빠지고, 아래에서 검색해
           고르면 추가됩니다. 스킬 열매로 붙이는 것과 같은 것이며, 최대 3개입니다.
         </div>
+
+        <div className="preset-bar">
+          <span className="preset-label">프리셋</span>
+          {skillPresets.length === 0 && <span className="muted">없음</span>}
+          {skillPresets.map((p) => (
+            <button
+              key={p.name}
+              className={`preset-use solo ${p.stale ? "stale" : ""}`}
+              title={
+                (p.stale ? "알 수 없는 스킬이 들어 있습니다 — " : "") +
+                p.skills.map((x) => x.name).join(", ")
+              }
+              disabled={p.stale}
+              onClick={() => {
+                setSkills(p.skills);
+                enable("skills");
+              }}
+            >
+              {p.name}
+            </button>
+          ))}
+          <button className="ghost preset-add" onClick={onManageSkills}>
+            프리셋 관리
+          </button>
+        </div>
+
         <SkillChooser
           chosen={skills}
           onChange={(next) => {
@@ -1982,6 +2031,142 @@ function PresetManager({
                 ? "이름을 입력하세요"
                 : chosen.length === 0
                   ? "패시브를 하나 이상 고르세요"
+                  : ""
+            }
+          >
+            {editing ? "저장" : "만들기"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Build and keep active-skill sets, the same shortcuts idea as passives. */
+function SkillPresetManager({
+  presets,
+  onClose,
+  onChanged,
+  say,
+}: {
+  presets: main.SkillPresetInfo[];
+  onClose: () => void;
+  onChanged: () => void;
+  say: (m: string, bad?: boolean) => void;
+}) {
+  const [name, setName] = useState("");
+  const [chosen, setChosen] = useState<main.SkillInfo[]>([]);
+  const [editing, setEditing] = useState("");
+
+  function startNew() {
+    setEditing("");
+    setName("");
+    setChosen([]);
+  }
+
+  function startEdit(p: main.SkillPresetInfo) {
+    setEditing(p.name);
+    setName(p.name);
+    setChosen(p.skills);
+  }
+
+  async function store() {
+    try {
+      await SaveSkillPreset(
+        name,
+        chosen.map((c) => c.id),
+      );
+      if (editing && editing !== name.trim()) {
+        await DeleteSkillPreset(editing);
+      }
+      say(`프리셋 저장됨 · ${name}`);
+      startNew();
+      onChanged();
+    } catch (e: any) {
+      say(String(e), true);
+    }
+  }
+
+  async function drop(target: string) {
+    try {
+      await DeleteSkillPreset(target);
+      say(`프리셋 삭제됨 · ${target}`);
+      if (editing === target) startNew();
+      onChanged();
+    } catch (e: any) {
+      say(String(e), true);
+    }
+  }
+
+  return (
+    <Modal title="액티브 스킬 프리셋" onClose={onClose}>
+      <div className="modal-body">
+        <div className="preset-list">
+          <div className="section-title">저장된 조합</div>
+          {presets.length === 0 && (
+            <div className="muted small">아직 없습니다.</div>
+          )}
+          {presets.map((p) => (
+            <div
+              key={p.name}
+              className={`preset-item ${editing === p.name ? "active" : ""} ${
+                p.stale ? "stale" : ""
+              }`}
+            >
+              <button className="preset-open" onClick={() => startEdit(p)}>
+                <div className="preset-item-name">
+                  {p.name}
+                  {p.stale && <span className="badge warn">사용 불가</span>}
+                </div>
+                <div className="preset-item-sub">
+                  {p.skills.map((x) => x.name).join(", ")}
+                </div>
+              </button>
+              <button
+                className="preset-del"
+                title="삭제"
+                onClick={() => drop(p.name)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button className="ghost wide" onClick={startNew}>
+            + 새 프리셋
+          </button>
+        </div>
+
+        <div className="preset-form">
+          <div className="section-title">
+            {editing ? `"${editing}" 수정` : "새 프리셋"}
+          </div>
+
+          <label className="form-row">
+            <span>이름</span>
+            <input
+              type="text"
+              placeholder="예: 화력형"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+
+          <div className="form-row col">
+            <span>
+              액티브 스킬 <span className="range">{chosen.length}/3</span>
+            </span>
+            <SkillChooser chosen={chosen} onChange={setChosen} say={say} />
+          </div>
+
+          <button
+            className="primary"
+            onClick={store}
+            disabled={!name.trim() || chosen.length === 0}
+            title={
+              !name.trim()
+                ? "이름을 입력하세요"
+                : chosen.length === 0
+                  ? "스킬을 하나 이상 고르세요"
                   : ""
             }
           >
