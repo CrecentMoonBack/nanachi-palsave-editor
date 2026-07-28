@@ -10,6 +10,10 @@ export function ApplyPreset(arg1, arg2) {
   return window['go']['main']['App']['ApplyPreset'](arg1, arg2);
 }
 
+export function ApplySkillPreset(arg1, arg2) {
+  return window['go']['main']['App']['ApplySkillPreset'](arg1, arg2);
+}
+
 export function BaseCamps(arg1) {
   return window['go']['main']['App']['BaseCamps'](arg1);
 }
@@ -32,6 +36,10 @@ export function DeletePal(arg1) {
 
 export function DeletePreset(arg1) {
   return window['go']['main']['App']['DeletePreset'](arg1);
+}
+
+export function DeleteSkillPreset(arg1) {
+  return window['go']['main']['App']['DeleteSkillPreset'](arg1);
 }
 
 export function GiveContainerItem(arg1, arg2, arg3) {
@@ -96,6 +104,10 @@ export function Relics(arg1) {
 
 export function SavePreset(arg1, arg2) {
   return window['go']['main']['App']['SavePreset'](arg1, arg2);
+}
+
+export function SaveSkillPreset(arg1, arg2) {
+  return window['go']['main']['App']['SaveSkillPreset'](arg1, arg2);
 }
 
 export function SaveToDisk() {
@@ -192,6 +204,10 @@ export function SetRelic(arg1, arg2, arg3) {
 
 export function SetSlotCount(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetSlotCount'](arg1, arg2, arg3);
+}
+
+export function SkillPresets() {
+  return window['go']['main']['App']['SkillPresets']();
 }
 
 export function Status() {

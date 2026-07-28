@@ -41,6 +41,8 @@ type App struct {
 
 	// presets are the user's saved passive sets, stored outside any save file.
 	presets *presetStore
+	// skillPresets are the same idea for active skills, in their own file.
+	skillPresets *presetStore
 }
 
 type playerFile struct {
@@ -61,9 +63,10 @@ type dpsFile struct {
 
 func NewApp() *App {
 	return &App{
-		players:   map[string]*playerFile{},
-		dpsStores: map[string]*dpsFile{},
-		presets:   newPresetStore(),
+		players:      map[string]*playerFile{},
+		dpsStores:    map[string]*dpsFile{},
+		presets:      newPresetStore("passive-presets.json"),
+		skillPresets: newPresetStore("skill-presets.json"),
 	}
 }
 
@@ -1318,6 +1321,107 @@ func (a *App) ApplyPreset(instanceID, name string) ([]PassiveInfo, error) {
 		out := make([]PassiveInfo, 0, len(p.IDs))
 		for _, id := range p.IDs {
 			out = append(out, describePassive(id))
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("그런 이름의 프리셋이 없습니다: %s", name)
+}
+
+// --- skill presets --------------------------------------------------------
+
+// SkillPresetInfo is a saved active-skill set as the UI shows it, resolved to
+// entries so names and elements render without a second round trip.
+type SkillPresetInfo struct {
+	Name   string      `json:"name"`
+	Skills []SkillInfo `json:"skills"`
+	// Stale marks a preset holding a skill id the reference table no longer
+	// knows — shown, not hidden, so it is visible rather than mysterious.
+	Stale bool `json:"stale"`
+}
+
+// validateSkills checks a preset's skill ids the same way an edit would, so a
+// set that cannot be applied is refused at save time.
+func validateSkills(ids []string) error {
+	if len(ids) > palsave.MaxEquipWaza {
+		return fmt.Errorf("액티브 스킬은 최대 %d개까지입니다 (%d개 요청)", palsave.MaxEquipWaza, len(ids))
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			return fmt.Errorf("스킬이 중복됩니다: %s", id)
+		}
+		seen[id] = true
+		if _, ok := paldata.LookupSkill(id); !ok {
+			return fmt.Errorf("알 수 없는 액티브 스킬입니다: %s", id)
+		}
+	}
+	return nil
+}
+
+// SkillPresets lists the saved active-skill sets, most recently updated first.
+func (a *App) SkillPresets() ([]SkillPresetInfo, error) {
+	list, err := a.skillPresets.all()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SkillPresetInfo, 0, len(list))
+	for _, p := range list {
+		info := SkillPresetInfo{Name: p.Name}
+		for _, id := range p.IDs {
+			d := describeSkill(id)
+			if !d.Known {
+				info.Stale = true
+			}
+			info.Skills = append(info.Skills, d)
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+// SaveSkillPreset stores an active-skill set under a name.
+func (a *App) SaveSkillPreset(name string, ids []string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("프리셋 이름을 입력하세요")
+	}
+	if len([]rune(name)) > 40 {
+		return fmt.Errorf("프리셋 이름이 너무 깁니다 (최대 40자)")
+	}
+	if len(ids) == 0 {
+		return fmt.Errorf("액티브 스킬을 하나 이상 골라야 합니다")
+	}
+	if err := validateSkills(ids); err != nil {
+		return err
+	}
+	return a.skillPresets.put(name, ids)
+}
+
+// DeleteSkillPreset removes a saved active-skill set.
+func (a *App) DeleteSkillPreset(name string) error {
+	return a.skillPresets.remove(name)
+}
+
+// ApplySkillPreset writes a preset's skills onto one pal, replacing whatever it
+// had, and returns the resolved list for the editor to show.
+func (a *App) ApplySkillPreset(instanceID, name string) ([]SkillInfo, error) {
+	list, err := a.skillPresets.all()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range list {
+		if !strings.EqualFold(p.Name, name) {
+			continue
+		}
+		if err := validateSkills(p.IDs); err != nil {
+			return nil, fmt.Errorf("프리셋 %q 을(를) 쓸 수 없습니다: %w", name, err)
+		}
+		if err := a.SetPalSkills(instanceID, p.IDs); err != nil {
+			return nil, err
+		}
+		out := make([]SkillInfo, 0, len(p.IDs))
+		for _, id := range p.IDs {
+			out = append(out, describeSkill(id))
 		}
 		return out, nil
 	}
