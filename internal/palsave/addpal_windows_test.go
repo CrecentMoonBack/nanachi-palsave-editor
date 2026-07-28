@@ -305,6 +305,26 @@ func TestAddPalGivesTheRecordAZeroMapKey(t *testing.T) {
 
 	// Read the key back from re-encoded bytes, not the in-memory struct.
 	w2 := reloadWorld(t, w)
+
+	// The container slot must carry a zero PlayerUId too — a real pal's does.
+	// A nonzero owner here was the last thing keeping added pals from surviving
+	// login: verified on the live server, adding it fixed the culling.
+	slotZero := false
+	slotFound := false
+	for _, cont := range w2.PalContainers() {
+		for _, s := range cont.Slots {
+			if s.Slot != nil && s.Slot.InstanceID == id {
+				slotFound = true
+				slotZero = s.Slot.PlayerUID.IsZero()
+			}
+		}
+	}
+	if !slotFound {
+		t.Error("added pal has no container slot after reload")
+	} else if !slotZero {
+		t.Error("added pal's container slot PlayerUId is not zero")
+	}
+
 	for _, c := range w2.chars {
 		if c.InstanceID != id {
 			continue
@@ -332,10 +352,22 @@ func TestAddPalNamesOnlyTheOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wantGuild, ok := w.guildOf(owner)
+	if !ok {
+		t.Fatal("owner has no guild in fixture")
+	}
 	for _, c := range w.Chars() {
 		if c.InstanceID != id {
 			continue
 		}
+
+		// The decisive one: the record's guild stamp (in the blob trailer, not a
+		// SaveParameter field) must be the owner's guild. A donor's guild here
+		// gets the pal culled on the owner's next login.
+		if c.Pal.Raw.GroupID != wantGuild {
+			t.Errorf("Raw.GroupID = %v, want owner's guild %v", c.Pal.Raw.GroupID, wantGuild)
+		}
+
 		p := c.Pal.Params()
 
 		if v, ok := p.Get("LastNickNameModifierPlayerUid"); ok {

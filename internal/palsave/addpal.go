@@ -215,10 +215,24 @@ func (w *World) AddPal(spec NewPalSpec) (gvas.GUID, error) {
 		return zero, err
 	}
 
+	// Stamp the record with the owner's guild. This is the one that actually
+	// mattered: the donor belongs to another guild, and its guild id sits in the
+	// character blob's trailer (Raw.GroupID), outside the SaveParameter fields.
+	// The 1.0-era game culls a pal whose record names a guild its owner is not
+	// in — verified against the live server, where every added Neptilius whose
+	// Raw.GroupID stayed the donor's was dropped on login and every one that
+	// matched the owner survived, a clean split. (MoveFromDPS already did this;
+	// AddPal was the path that missed it.)
+	guild, ok := w.guildOf(spec.Owner)
+	if !ok {
+		return zero, fmt.Errorf("palsave: 소유자 %s 가 길드에 없습니다", spec.Owner)
+	}
+	pal.Raw.GroupID = guild
+
 	if err := w.appendCharacter(pal, instance); err != nil {
 		return zero, err
 	}
-	if err := container.appendSlot(slotIndex, spec.Owner, instance); err != nil {
+	if err := container.appendSlot(slotIndex, instance); err != nil {
 		return zero, err
 	}
 	if err := w.registerInGuild(spec.Owner, instance); err != nil {
@@ -237,7 +251,10 @@ func preparePal(p *Pal, spec NewPalSpec, instance gvas.GUID, slotIndex int32) er
 	}
 	params.Set("CharacterID", &gvas.NameProperty{Value: gvas.Str(species)})
 	setGUIDProp(params, "OwnerPlayerUId", spec.Owner)
-	setGUIDProp(params, "OldOwnerPlayerUId", spec.Owner)
+	// OldOwnerPlayerUId (singular) is not a field a real pal has — the real one
+	// is the OldOwnerPlayerUIds array, handled below. Writing the singular left
+	// an extra field no normal pal carries, so drop any the donor had.
+	params.Delete("OldOwnerPlayerUId")
 
 	// Every player-reference the donor carried must point at the new owner, not
 	// the donor's owner. The game (1.0-era) culls a pal that names a player it is
@@ -419,12 +436,16 @@ func (w *World) appendCharacter(p *Pal, instance gvas.GUID) error {
 }
 
 // appendSlot adds the container's pointer at the pal.
-func (c *PalContainer) appendSlot(index int32, owner, instance gvas.GUID) error {
+func (c *PalContainer) appendSlot(index int32, instance gvas.GUID) error {
 	if c.arr == nil || c.arr.Structs == nil {
 		return fmt.Errorf("palsave: container %s has no slot array", c.ID)
 	}
 
-	slot := &CharacterContainerSlot{PlayerUID: owner, InstanceID: instance}
+	// A pal-container slot carries a zero PlayerUID, exactly like the character
+	// map key: the slot is keyed by the pal's instance, and ownership lives in
+	// the pal's own record. Writing the owner here (as this once did) is another
+	// player-scoped id the 1.0 game reads as invalid and culls the pal for.
+	slot := &CharacterContainerSlot{PlayerUID: gvas.GUID{}, InstanceID: instance}
 	// The trailing bytes and permission id are copied from a populated slot:
 	// their meaning is not established, and an occupied slot is a working
 	// example of what the game accepts. A brand-new box has no occupied slot,
