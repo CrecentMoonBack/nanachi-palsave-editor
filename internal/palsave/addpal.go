@@ -239,6 +239,16 @@ func preparePal(p *Pal, spec NewPalSpec, instance gvas.GUID, slotIndex int32) er
 	setGUIDProp(params, "OwnerPlayerUId", spec.Owner)
 	setGUIDProp(params, "OldOwnerPlayerUId", spec.Owner)
 
+	// Every player-reference the donor carried must point at the new owner, not
+	// the donor's owner. The game (1.0-era) culls a pal that names a player it is
+	// not owned by — a cross-guild reference — the moment that pal's owner logs
+	// in: it silently vanishes. The donor was some other player's pal, so its
+	// LastNickNameModifierPlayerUid and OldOwnerPlayerUIds still named them, and
+	// pals added this way disappeared on the owner's next login. A real pal names
+	// only its owner in these, so match that.
+	setGUIDProp(params, "LastNickNameModifierPlayerUid", spec.Owner)
+	setOldOwners(params, spec.Owner)
+
 	// A nickname belonging to the donor would follow the copy over.
 	params.Delete("NickName")
 	// The donor's equipped and mastered moves are kept, on purpose. They are
@@ -307,6 +317,27 @@ func setGUIDProp(props *gvas.Properties, name string, id gvas.GUID) {
 		StructType: gvas.Str("Guid"),
 		Value:      &g,
 	})
+}
+
+// setOldOwners points every entry of OldOwnerPlayerUIds at one player. The
+// entries are overwritten in place rather than the array rebuilt, so its length
+// descriptor and padding — which the format records and this code does not
+// recompute — stay exactly as the donor had them. A donor from another player
+// leaves their id here, which the game reads as a cross-guild reference and
+// culls; pointing them at the owner removes that.
+func setOldOwners(props *gvas.Properties, owner gvas.GUID) {
+	v, ok := props.Get("OldOwnerPlayerUIds")
+	if !ok {
+		return
+	}
+	a, ok := v.(*gvas.ArrayProperty)
+	if !ok || a.Structs == nil {
+		return
+	}
+	for i := range a.Structs.Values {
+		g := gvas.GUIDValue(owner)
+		a.Structs.Values[i] = &g
+	}
 }
 
 // donorPal picks a record to copy. Any ordinary pal will do; a player record

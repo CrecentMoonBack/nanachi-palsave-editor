@@ -320,6 +320,45 @@ func TestAddPalGivesTheRecordAZeroMapKey(t *testing.T) {
 	t.Fatal("added pal not found after reload")
 }
 
+// An added pal must name only its owner in every player-reference field. The
+// donor belonged to someone else, and a leftover cross-guild reference makes
+// the game cull the pal on the owner's next login — the "made pals vanish"
+// report. This guards that the donor's ids are scrubbed.
+func TestAddPalNamesOnlyTheOwner(t *testing.T) {
+	w := loadLevelWorld(t)
+	owner, box := palboxOf(t, w)
+
+	id, err := w.AddPal(NewPalSpec{SpeciesID: "SheepBall", Level: 1, Rank: 1, Owner: owner, Container: box.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range w.Chars() {
+		if c.InstanceID != id {
+			continue
+		}
+		p := c.Pal.Params()
+
+		if v, ok := p.Get("LastNickNameModifierPlayerUid"); ok {
+			if sp, ok := v.(*gvas.StructProperty); ok {
+				if g, ok := sp.Value.(*gvas.GUIDValue); ok && gvas.GUID(*g) != owner {
+					t.Errorf("LastNickNameModifierPlayerUid = %v, want owner %v", gvas.GUID(*g), owner)
+				}
+			}
+		}
+		if v, ok := p.Get("OldOwnerPlayerUIds"); ok {
+			if a, ok := v.(*gvas.ArrayProperty); ok && a.Structs != nil {
+				for _, sv := range a.Structs.Values {
+					if g, ok := sv.(*gvas.GUIDValue); ok && gvas.GUID(*g) != owner {
+						t.Errorf("OldOwnerPlayerUIds has a foreign ref %v, want owner %v", gvas.GUID(*g), owner)
+					}
+				}
+			}
+		}
+		return
+	}
+	t.Fatal("added pal not found")
+}
+
 // Bad input must be refused rather than written.
 func TestAddPalRejectsBadInput(t *testing.T) {
 	w := loadLevelWorld(t)
